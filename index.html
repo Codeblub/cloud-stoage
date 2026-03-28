@@ -12,7 +12,7 @@
     <div id="fileList">Loading files...</div>
 
     <script>
-        const TOKEN = "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"; // Be careful: only use this on a local file or private site
+       const TOKEN = prompt("Enter your Token:");// Be careful: only use this on a local file or private site
         async function loadFiles() {
             const res = await fetch('https://api.github.com/repos/Codeblub/cloud-stoage/contents/vault', {
                 headers: { 'Authorization': `token ${TOKEN}` }
