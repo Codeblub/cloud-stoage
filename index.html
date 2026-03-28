@@ -1,127 +1,75 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
     <title>1PB Hackintosh Vault</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: #eee; padding: 40px; margin: 0; }
-        .container { max-width: 900px; margin: auto; }
-        #login-screen, #app-screen { display: none; }
-        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        #path-bar { background: #111; padding: 15px; border-radius: 8px; font-family: monospace; color: #00ff00; border: 1px solid #222; flex-grow: 1; margin-right: 10px; }
-        .item { background: #161616; padding: 15px 25px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #222; margin-bottom: 8px; }
-        .folder { color: #ffca28; font-weight: bold; cursor: pointer; flex-grow: 1; }
+        body { font-family: sans-serif; background: #0a0a0a; color: #eee; padding: 20px; }
+        .item { background: #161616; padding: 10px 20px; border-radius: 8px; display: flex; align-items: center; margin-bottom: 5px; border: 1px solid #222; }
+        .name { flex-grow: 1; cursor: pointer; }
+        .folder { color: #ffca28; font-weight: bold; }
         .file { color: #81d4fa; }
-        .badge { background: #1a3a3a; font-size: 10px; padding: 3px 8px; border-radius: 4px; color: #4db6ac; margin-left: 10px; }
-        button { cursor: pointer; border: none; padding: 8px 15px; border-radius: 6px; font-weight: bold; margin-left: 5px; transition: 0.2s; }
-        .btn-blue { background: #007bff; color: white; }
-        .btn-blue:hover { background: #0056b3; }
-        .btn-red { background: #dc3545; color: white; }
-        .btn-red:hover { background: #a71d2a; }
-        .btn-refresh { background: #28a745; color: white; padding: 15px; }
-        input { padding: 10px; background: #111; color: white; border: 1px solid #333; margin-bottom: 10px; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; margin-left: 5px; }
+        .del { background: #dc3545; }
+        .refresh { background: #28a745; padding: 10px; margin-bottom: 15px; }
+        #path { color: #00ff00; margin-bottom: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div id="login-screen" style="text-align:center; padding-top:100px;">
-            <h1>🔐 Vault Login</h1>
-            <input type="password" id="token-input" placeholder="Paste GitHub Token"><br>
-            <button class="btn-blue" onclick="saveToken()">Connect</button>
-        </div>
-        <div id="app-screen">
-            <div class="header-row">
-                <h1>☁️ 1PB Vault</h1>
-                <button class="btn-refresh" onclick="loadVault()">🔄 Refresh</button>
-            </div>
-            <div id="path-bar">root / vault</div>
-            <div id="explorer">Connecting...</div>
-        </div>
-    </div>
+    <h1>☁️ 1PB Vault</h1>
+    <button class="refresh" onclick="loadVault()">🔄 Refresh Vault</button>
+    <div id="path">vault</div>
+    <div id="list">Loading...</div>
+
     <script>
         const REPO = "Codeblub/cloud-stoage";
         let TOKEN = localStorage.getItem('gh_token');
-        let currentPath = "vault";
+        if(!TOKEN) { TOKEN = prompt("Enter GitHub Token"); localStorage.setItem('gh_token', TOKEN); }
 
-        function saveToken() { localStorage.setItem('gh_token', document.getElementById('token-input').value); location.reload(); }
-
-        async function deleteFile(name, isSliced, path) {
-            if (!confirm(`Are you sure you want to delete ${name}?`)) return;
-            
-            const h = { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' };
-            try {
-                // Get all items in directory to find SHAs
-                const res = await fetch(`https://api.github.com/repos/${REPO/contents/${path}`, { headers: h });
-                const items = await res.json();
-                
-                // Filter items to delete (either the exact file or all parts)
-                const targets = items.filter(i => i.name === name || (isSliced && i.name.startsWith(name + '.part')));
-                
-                for (let t of targets) {
-                    await fetch(`https://api.github.com/repos/${REPO}/contents/${t.path}`, {
-                        method: 'DELETE',
-                        headers: h,
-                        body: JSON.stringify({ message: `Delete ${t.name}`, sha: t.sha })
-                    });
-                }
-                alert("Deleted successfully.");
-                loadVault(currentPath);
-            } catch (e) { alert("Delete failed."); }
+        async function del(name, isSliced, path) {
+            if(!confirm("Delete " + name + "?")) return;
+            const h = { 'Authorization': `token ${TOKEN}` };
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {headers: h});
+            const items = await res.json();
+            const targets = items.filter(i => i.name === name || (isSliced && i.name.startsWith(name + '.part')));
+            for(let t of targets) {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${t.path}`, {
+                    method: 'DELETE', headers: h, body: JSON.stringify({message: "Delete", sha: t.sha})
+                });
+            }
+            loadVault(path);
         }
 
         async function loadVault(path = "vault") {
-            if (!TOKEN) { document.getElementById('login-screen').style.display='block'; return; }
-            currentPath = path;
-            document.getElementById('app-screen').style.display='block';
-            const explorer = document.getElementById('explorer');
-            document.getElementById('path-bar').innerText = path.replace(/\//g, " ❯ ");
-            explorer.innerHTML = "Syncing with GitHub...";
+            const list = document.getElementById('list');
+            document.getElementById('path').innerText = path;
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {headers: {'Authorization': `token ${TOKEN}`}});
+            const data = await res.json();
+            list.innerHTML = "";
+            
+            let files = {};
+            data.forEach(item => {
+                if(item.type === "dir") {
+                    let d = document.createElement('div'); d.className = "item";
+                    d.innerHTML = `<span class="name folder" onclick="loadVault('${item.path}')">📁 ${item.name}/</span>`;
+                    list.appendChild(d);
+                } else {
+                    let clean = item.name.split('.part')[0];
+                    if(!files[clean]) files[clean] = { name: clean, size: 0, sliced: false, url: item.download_url, path: path };
+                    files[clean].size += item.size;
+                    if(item.name.includes('.part')) files[clean].sliced = true;
+                }
+            });
 
-            try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                    headers: { 'Authorization': `token ${TOKEN}` }
-                });
-                const rawItems = await res.json();
-                explorer.innerHTML = "";
-
-                const fileMap = {};
-                const folders = [];
-
-                rawItems.forEach(item => {
-                    if (item.type === "dir") { folders.push(item); } 
-                    else {
-                        const cleanName = item.name.split('.part')[0];
-                        if (!fileMap[cleanName]) {
-                            fileMap[cleanName] = { name: cleanName, size: 0, isSliced: false, url: item.download_url, fullPath: path };
-                        }
-                        fileMap[cleanName].size += item.size;
-                        if (item.name.includes('.part')) fileMap[cleanName].isSliced = true;
-                    }
-                });
-
-                folders.forEach(f => {
-                    const div = document.createElement('div');
-                    div.className = "item";
-                    div.innerHTML = `<div class="folder" onclick="loadVault('${f.path}')">📁 ${f.name}/</div>`;
-                    explorer.appendChild(div);
-                });
-
-                Object.values(fileMap).forEach(f => {
-                    const div = document.createElement('div');
-                    div.className = "item";
-                    const sizeMB = (f.size / (1024 * 1024)).toFixed(2);
-                    div.innerHTML = `
-                        <div class="file">📄 ${f.name} ${f.isSliced ? '<span class="badge">VIRTUALIZED</span>' : ''}</div>
-                        <div>
-                            <span style="color:#666; font-size:12px; margin-right:10px;">${sizeMB} MB</span>
-                            <button class="btn-blue" onclick="window.open('${f.url}')">Download</button>
-                            <button class="btn-red" onclick="deleteFile('${f.name}', ${f.isSliced}, '${f.fullPath}')">Delete</button>
-                        </div>`;
-                    explorer.appendChild(div);
-                });
-            } catch (e) { explorer.innerHTML = "Error loading vault."; }
+            Object.values(files).forEach(f => {
+                let d = document.createElement('div'); d.className = "item";
+                d.innerHTML = `<span class="name file">📄 ${f.name}</span> 
+                    <span style="font-size:12px;color:#666">${(f.size/1048576).toFixed(2)}MB</span>
+                    <button onclick="window.open('${f.url}')">Download</button>
+                    <button class="del" onclick="del('${f.name}', ${f.sliced}, '${f.path}')">Delete</button>`;
+                list.appendChild(d);
+            });
         }
-        if (TOKEN) loadVault(); else document.getElementById('login-screen').style.display='block';
+        loadVault();
     </script>
 </body>
 </html>
