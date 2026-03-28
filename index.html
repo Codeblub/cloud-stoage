@@ -1,157 +1,99 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GitHub 1PB Cloud Explorer</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #1a1a1a; color: white; }
-        .container { max-width: 900px; margin: auto; background: #2d2d2d; padding: 25px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
-        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .file-card { background: #3d3d3d; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #238636; }
-        .btn { background: #238636; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; text-decoration: none; display: inline-block; }
-        .btn:hover { background: #2ea043; }
-        .btn-refresh { background: #0969da; }
-        .btn-refresh:hover { background: #107ae6; }
-        .btn-delete { background: #da3633; margin-left: 8px; }
-        .btn-delete:hover { background: #f85149; }
-        #status-container { margin: 20px 0; padding: 15px; background: #1c1c1c; border-radius: 8px; display: none; }
-        .progress-bar { width: 100%; background: #444; height: 10px; border-radius: 5px; margin-top: 10px; overflow: hidden; }
-        #progress-fill { width: 0%; height: 100%; background: #238636; transition: width 0.3s; }
-        #fileList { margin-top: 20px; }
-        input[type="file"] { margin-bottom: 15px; color: #8b949e; border: 1px dashed #444; padding: 10px; width: 100%; box-sizing: border-box; border-radius: 6px; }
+        body { font-family: sans-serif; background: #121212; color: white; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 10px; }
+        .file-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; align-items: center; }
+        .file-item:hover { background: #252525; }
+        .actions { display: flex; gap: 10px; }
+        button, a { padding: 5px 10px; border-radius: 5px; cursor: pointer; text-decoration: none; color: white; border: none; }
+        .delete-btn { background: #d9534f; }
+        .download-btn { background: #5cb85c; }
+        .split-tag { background: #f0ad4e; font-size: 0.7em; padding: 2px 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header-flex">
-            <h1>☁️ 1PB Hackintosh Vault</h1>
-            <button class="btn btn-refresh" onclick="loadFiles()">🔄 Refresh List</button>
-        </div>
-        <p style="color: #8b949e;">Storage: GitHub API | Max File: 100MB (Split large VMs!)</p>
-        
-        <input type="file" id="fileInput" multiple>
-        <button class="btn" onclick="uploadFiles()">🚀 Upload to Cloud</button>
-
-        <div id="status-container">
-            <div id="status-text">Ready...</div>
-            <div class="progress-bar"><div id="progress-fill"></div></div>
-        </div>
-
-        <hr style="border: 0.5px solid #444; margin: 25px 0;">
-        <div id="fileList">Scanning Vault...</div>
+        <h1>☁️ 1PB Hackintosh Vault</h1>
+        <button onclick="fetchFiles()" style="background: #3498db; margin-bottom: 20px;">🔄 Refresh List</button>
+        <div id="file-list">Loading files...</div>
     </div>
 
     <script>
-        // Prompt for token and store it session-wide
-        let TOKEN = sessionStorage.getItem('gh_token') || prompt("Enter GitHub Personal Access Token:");
-        if (TOKEN) sessionStorage.setItem('gh_token', TOKEN);
-
         const REPO = "Codeblub/cloud-stoage";
-        const statusContainer = document.getElementById('status-container');
-        const statusText = document.getElementById('status-text');
-        const progressFill = document.getElementById('progress-fill');
+        const TOKEN = "YOUR_GITHUB_TOKEN_HERE"; // Be careful with tokens in HTML!
 
-        async function loadFiles() {
-            const container = document.getElementById('fileList');
-            container.innerHTML = 'Updating file list...';
-            
+        async function fetchFiles() {
+            const list = document.getElementById('file-list');
             try {
-                // Use a timestamp to bypass GitHub Pages/API caching
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault?t=${new Date().getTime()}`, {
-                    headers: { 
-                        'Authorization': `token ${TOKEN}`,
-                        'Accept': 'application/vnd.github.v3.raw' 
-                    }
+                const res = await fetch(`https://api.github.com/repos/${REPO/contents/vault}`, {
+                    headers: { 'Authorization': `token ${TOKEN}` }
                 });
-                
                 const files = await res.json();
-                container.innerHTML = '';
-                
-                if (!Array.isArray(files)) {
-                    container.innerHTML = '<p style="color: #da3633;">No files found or Vault folder missing.</p>';
-                    return;
-                }
-
-                files.forEach(file => {
-                    if(file.name !== ".gitkeep") {
-                        const size = (file.size / (1024 * 1024)).toFixed(2);
-                        container.innerHTML += `
-                            <div class="file-card">
-                                <span>📄 <strong>${file.name}</strong> (${size} MB)</span>
-                                <div>
-                                    <a class="btn" href="${file.download_url}" download>Download</a>
-                                    <button class="btn btn-delete" onclick="deleteFile('${file.name}', '${file.sha}')">Delete</button>
-                                </div>
-                            </div>`;
-                    }
-                });
-            } catch (e) {
-                container.innerText = "Error: Check your token or repository permissions.";
-            }
+                renderFiles(files);
+            } catch (e) { list.innerHTML = "Error loading files."; }
         }
 
-        async function uploadFiles() {
-            const files = document.getElementById('fileInput').files;
-            if (files.length === 0) return alert("Select files first!");
-            
-            statusContainer.style.display = 'block';
-            let completed = 0;
+        function renderFiles(files) {
+            const list = document.getElementById('file-list');
+            list.innerHTML = '';
+            const groups = {};
 
-            for (let file of files) {
-                statusText.innerText = `Processing: ${file.name}...`;
-                
-                const reader = new FileReader();
-                const fileData = await new Promise((resolve) => {
-                    reader.onload = () => resolve(reader.result.split(',')[1]);
-                    reader.readAsDataURL(file);
-                });
+            files.forEach(file => {
+                const splitMatch = file.name.match(/^(.*)\.part\d+$/);
+                const groupName = splitMatch ? splitMatch[1] : file.name;
 
-                try {
-                    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${file.name}`, {
-                        method: 'PUT',
-                        headers: { 
-                            'Authorization': `token ${TOKEN}`,
-                            'Accept': 'application/vnd.github.v3.raw',
-                            'Content-Type': 'application/json' 
-                        },
-                        body: JSON.stringify({ 
-                            message: `Vault Upload: ${file.name}`, 
-                            content: fileData 
-                        })
-                    });
-
-                    if (!res.ok) throw new Error("Upload failed");
-                    
-                    completed++;
-                    progressFill.style.width = ((completed / files.length) * 100) + '%';
-                } catch (err) {
-                    alert(`Failed to upload ${file.name}. Ensure it's under 100MB.`);
+                if (!groups[groupName]) {
+                    groups[groupName] = {
+                        name: groupName,
+                        totalSize: 0,
+                        isSplit: false,
+                        parts: []
+                    };
                 }
-            }
-            
-            statusText.innerText = "✅ Upload complete!";
-            setTimeout(() => { statusContainer.style.display = 'none'; }, 2000);
-            loadFiles(); // Refresh list automatically
+                groups[groupName].totalSize += file.size;
+                groups[groupName].parts.push({ name: file.name, sha: file.sha, url: file.download_url });
+                if (splitMatch) groups[groupName].isSplit = true;
+            });
+
+            Object.values(groups).forEach(group => {
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                const sizeMB = (group.totalSize / (1024 * 1024)).toFixed(2);
+                
+                item.innerHTML = `
+                    <span>
+                        ${group.isSplit ? '📦' : '📄'} 
+                        <strong>${group.name}</strong> 
+                        ${group.isSplit ? '<span class="split-tag">SPLIT</span>' : ''}
+                        <br><small style="color:#888">${sizeMB} MB</small>
+                    </span>
+                    <div class="actions">
+                        ${!group.isSplit ? `<a class="download-btn" href="${group.parts[0].url}" target="_blank">Download</a>` : `<span style="color:#888; font-size:12px">Use Merge Script</span>`}
+                        <button class="delete-btn" onclick="bulkDelete(${JSON.stringify(group.parts)})">Delete</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
         }
 
-        async function deleteFile(name, sha) {
-            if(!confirm(`Delete ${name} from cloud?`)) return;
-            try {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${name}`, {
+        async function bulkDelete(parts) {
+            if (!confirm(`Delete this file and its ${parts.length} parts?`)) return;
+            for (let part of parts) {
+                await fetch(`https://api.github.com/repos/${REPO/contents/vault/}${part.name}`, {
                     method: 'DELETE',
-                    headers: { 
-                        'Authorization': `token ${TOKEN}`,
-                        'Accept': 'application/vnd.github.v3.raw',
-                        'Content-Type': 'application/json' 
-                    },
-                    body: JSON.stringify({ message: `Delete ${name}`, sha: sha })
+                    headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: `Delete ${part.name}`, sha: part.sha })
                 });
-                loadFiles();
-            } catch (e) {
-                alert("Delete failed.");
             }
+            fetchFiles();
         }
 
-        if (TOKEN) loadFiles();
+        fetchFiles();
     </script>
 </body>
 </html>
