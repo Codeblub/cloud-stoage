@@ -40,7 +40,7 @@
             document.getElementById('app-screen').style.display='block';
             const explorer = document.getElementById('explorer');
             document.getElementById('path-bar').innerText = path.replace(/\//g, " ❯ ");
-            explorer.innerHTML = "Reassembling view...";
+            explorer.innerHTML = "Indexing...";
 
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
