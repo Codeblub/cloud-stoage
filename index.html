@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>My GitHub Cloud</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+        .file-card { background: white; padding: 10px; margin: 5px; border-radius: 5px; display: flex; justify-content: space-between; }
+    </style>
+</head>
+<body>
+    <h1>📁 My Cloud Vault</h1>
+    <div id="fileList">Loading files...</div>
+
+    <script>
+        const TOKEN = "YOUR_TOKEN_HERE"; // Be careful: only use this on a local file or private site
+        async function loadFiles() {
+            const res = await fetch('https://api.github.com/repos/Codeblub/cloud-stoage/contents/vault', {
+                headers: { 'Authorization': `token ${TOKEN}` }
+            });
+            const files = await res.json();
+            const container = document.getElementById('fileList');
+            container.innerHTML = '';
+            files.forEach(file => {
+                container.innerHTML += `<div class="file-card"><span>${file.name}</span> <a href="${file.download_url}" target="_blank">Download</a></div>`;
+            });
+        }
+        loadFiles();
+    </script>
+</body>
+</html>
