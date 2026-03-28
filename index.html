@@ -5,24 +5,26 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #1a1a1a; color: white; }
         .container { max-width: 800px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        .file-card { background: #3d3d3d; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
-        .file-card:hover { background: #4d4d4d; }
-        .btn { background: #238636; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; }
-        input[type="file"] { margin-bottom: 20px; }
+        .file-card { background: #3d3d3d; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { background: #238636; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; margin-right: 5px; }
+        .btn-delete { background: #da3633; }
+        #status { margin-top: 10px; color: #8b949e; font-size: 0.9em; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>☁️ My 200GB Cloud</h1>
-        <input type="file" id="fileInput">
-        <button class="btn" onclick="uploadFile()">Upload to Vault</button>
+        <h1>☁️ 200GB Hackintosh Vault</h1>
+        <input type="file" id="fileInput" multiple>
+        <button class="btn" onclick="uploadFiles()">Upload All Selected</button>
+        <div id="status"></div>
         <hr style="border: 0.5px solid #444; margin: 20px 0;">
-        <div id="fileList">Loading your vault...</div>
+        <div id="fileList">Loading files...</div>
     </div>
 
     <script>
         const TOKEN = prompt("Enter your GitHub Token:");
         const REPO = "Codeblub/cloud-stoage";
+        const statusDiv = document.getElementById('status');
 
         async function loadFiles() {
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault`, {
@@ -36,28 +38,48 @@
                     container.innerHTML += `
                         <div class="file-card">
                             <span>📄 ${file.name}</span>
-                            <a class="btn" href="${file.download_url}" target="_blank">Download</a>
+                            <div>
+                                <a class="btn" href="${file.download_url}" target="_blank">Download</a>
+                                <button class="btn btn-delete" onclick="deleteFile('${file.name}', '${file.sha}')">Delete</button>
+                            </div>
                         </div>`;
                 }
             });
         }
 
-        async function uploadFile() {
-            const file = document.getElementById('fileInput').files[0];
-            if (!file) return alert("Select a file first!");
+        async function uploadFiles() {
+            const files = document.getElementById('fileInput').files;
+            if (files.length === 0) return alert("Select files first!");
             
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const content = reader.result.split(',')[1];
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${file.name}`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
+            for (let file of files) {
+                statusDiv.innerText = `Uploading ${file.name}...`;
+                const reader = new FileReader();
+                const promise = new Promise(resolve => {
+                    reader.onload = async () => {
+                        const content = reader.result.split(',')[1];
+                        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${file.name}`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
+                        });
+                        resolve(res.ok);
+                    };
                 });
-                if (res.ok) { alert("Upload Success!"); loadFiles(); }
-                else { alert("Upload Failed. Check token permissions."); }
-            };
-            reader.readAsDataURL(file);
+                reader.readAsDataURL(file);
+                await promise;
+            }
+            statusDiv.innerText = "All uploads complete!";
+            loadFiles();
+        }
+
+        async function deleteFile(name, sha) {
+            if(!confirm(`Delete ${name}?`)) return;
+            await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${name}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: `Delete ${name}`, sha: sha })
+            });
+            loadFiles();
         }
 
         loadFiles();
