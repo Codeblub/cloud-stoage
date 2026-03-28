@@ -5,13 +5,13 @@
     <title>1PB Vault Control</title>
     <style>
         body { background: #0a0a0a; color: #00ff41; font-family: monospace; padding: 20px; }
-        .file-item { border-bottom: 1px solid #222; padding: 10px; display: flex; justify-content: space-between; }
-        .btn { cursor: pointer; padding: 5px 10px; border: 1px solid #00ff41; background: none; color: #00ff41; margin-left: 5px; }
+        .file-item { border-bottom: 1px solid #222; padding: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .btn { cursor: pointer; padding: 5px 10px; border: 1px solid #00ff41; background: none; color: #00ff41; margin-left: 5px; text-decoration: none; }
         .btn:hover { background: #00ff41; color: #000; }
-        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
-        #editor-text { width: 80%; height: 60%; background: #111; color: #00ff41; border: 1px solid #444; padding: 20px; font-family: monospace; }
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        #editor-text { width: 90%; height: 70%; background: #111; color: #00ff41; border: 1px solid #444; padding: 10px; font-family: monospace; font-size: 14px; }
         .upload-section { margin-bottom: 20px; padding: 15px; border: 1px dashed #444; }
-        audio, video { width: 80%; max-width: 800px; }
+        .status-tag { background: #004400; padding: 2px 5px; font-size: 10px; margin-left: 10px; }
     </style>
 </head>
 <body>
@@ -19,112 +19,135 @@
     <h1>☁️ 1PB Vault Engine</h1>
 
     <div class="upload-section">
-        <h3>Upload to Vault</h3>
         <input type="file" id="fileInput">
         <button class="btn" onclick="uploadFile()">Push to Cloud</button>
-        <div id="upStatus"></div>
+        <span id="upStatus"></span>
     </div>
 
-    <div id="fileList">Loading Vault...</div>
+    <div id="breadcrumb" style="color:#00ff41; cursor:pointer; margin-bottom:10px;" onclick="loadVault('vault')">🏠 Root</div>
+    <div id="fileList">Loading...</div>
 
     <div id="overlay">
-        <button class="btn" style="margin-bottom: 10px;" onclick="closeOverlay()">[ ESC / CLOSE ]</button>
-        <div id="contentArea"></div>
+        <button class="btn" style="margin-bottom: 15px;" onclick="closeOverlay()">[ X ] CLOSE</button>
+        <div id="contentArea" style="width:100%; text-align:center;"></div>
     </div>
 
     <script>
         const repo = "Codeblub/cloud-stoage";
-        const token = "YOUR_GITHUB_TOKEN_HERE"; // Keep this private!
+        const token = "YOUR_GITHUB_TOKEN_HERE";
+        let currentPath = "vault";
 
-        async function loadVault() {
-            const res = await fetch(`https://api.github.com/repos/${repo}/contents/vault`);
-            const files = await res.json();
+        async function loadVault(path = "vault") {
+            currentPath = path;
+            document.getElementById('breadcrumb').innerText = `🏠 Root / ${path.replace('vault', '')}`;
+            const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`);
+            const rawFiles = await res.json();
+            
+            // LOGIC TO HIDE PARTS
+            const processed = new Map();
+            rawFiles.forEach(f => {
+                if(f.name === "placeholder.txt" || f.name === "index.html") return;
+                
+                let displayName = f.name;
+                let isPart = false;
+                if (f.name.includes('.part')) {
+                    displayName = f.name.split('.part')[0];
+                    isPart = true;
+                }
+
+                if (!processed.has(displayName)) {
+                    processed.set(displayName, { ...f, name: displayName, isLarge: isPart, parts: [] });
+                }
+                if (isPart) processed.get(displayName).parts.push(f);
+            });
+
             let html = "";
-            files.forEach(f => {
-                if(f.name === "placeholder.txt") return;
+            processed.forEach(f => {
+                const isDir = f.type === 'dir';
+                const statusTag = f.isLarge ? `<span class="status-tag">LARGE FILE (${f.parts.length} PARTS)</span>` : "";
+                
                 html += `
                 <div class="file-item">
-                    <span style="cursor:pointer; text-decoration:underline;" onclick="openFile('${f.download_url}', '${f.name}', '${f.path}')">
-                        ${f.type === 'dir' ? '📁' : '📄'} ${f.name}
+                    <span style="cursor:pointer;" onclick="${isDir ? `loadVault('${f.path}')` : `openFile('${f.download_url}', '${f.name}', '${f.path}')`}">
+                        ${isDir ? '📁' : '📄'} <strong>${f.name}</strong> ${statusTag}
                     </span>
                     <div>
-                        <button class="btn" onclick="window.open('${f.download_url}')">DL</button>
-                        <button class="btn" style="border-color:red; color:red;" onclick="deleteFile('${f.path}', '${f.sha}')">DEL</button>
+                        ${f.isLarge ? `<button class="btn" disabled title="Reassemble on E: Drive to use">CLOUD ONLY</button>` : `<button class="btn" onclick="window.open('${f.download_url}')">DL</button>`}
+                        <button class="btn" style="border-color:red; color:red;" onclick="deleteMulti('${f.name}', ${JSON.stringify(f.parts.map(p => ({path:p.path, sha:p.sha})))})">DEL</button>
                     </div>
                 </div>`;
             });
             document.getElementById('fileList').innerHTML = html;
         }
 
+        async function deleteMulti(name, parts) {
+            if(!confirm(`Delete ${name} and all its parts?`)) return;
+            for(const p of parts) {
+                await fetch(`https://api.github.com/repos/${repo}/contents/${p.path}`, {
+                    method: "DELETE",
+                    headers: { "Authorization": `token ${token}` },
+                    body: JSON.stringify({ message: "Delete Part", sha: p.sha })
+                });
+            }
+            // If it wasn't a large file, delete the single file
+            if(parts.length === 0) {
+                 const res = await fetch(`https://api.github.com/repos/${repo}/contents/${currentPath}/${name}`);
+                 const data = await res.json();
+                 await fetch(`https://api.github.com/repos/${repo}/contents/${currentPath}/${name}`, {
+                    method: "DELETE",
+                    headers: { "Authorization": `token ${token}` },
+                    body: JSON.stringify({ message: "Delete", sha: data.sha })
+                });
+            }
+            loadVault(currentPath);
+        }
+
+        // Rest of functions (openFile, saveText, uploadFile, closeOverlay) remain same as previous version...
         function openFile(url, name, path) {
             const area = document.getElementById('contentArea');
             const overlay = document.getElementById('overlay');
             const ext = name.split('.').pop().toLowerCase();
             overlay.style.display = 'flex';
-
             if (['mp3', 'wav', 'ogg'].includes(ext)) {
-                area.innerHTML = `<audio controls autoplay src="${url}"></audio><h3>Now Playing: ${name}</h3>`;
+                area.innerHTML = `<audio controls autoplay src="${url}"></audio><h2>${name}</h2>`;
             } else if (['mp4', 'webm'].includes(ext)) {
-                area.innerHTML = `<video controls autoplay src="${url}"></video>`;
-            } else if (['txt', 'env', 'json', 'js', 'html'].includes(ext)) {
+                area.innerHTML = `<video controls autoplay src="${url}"></video><h2>${name}</h2>`;
+            } else if (['txt', 'env', 'json', 'js', 'html', 'md'].includes(ext)) {
                 fetch(url).then(r => r.text()).then(text => {
-                    area.innerHTML = `
-                        <h3>Editing: ${name}</h3>
-                        <textarea id="editor-text">${text}</textarea><br>
-                        <button class="btn" onclick="saveText('${path}')">Save Changes</button>
-                    `;
+                    area.innerHTML = `<h2>Editing: ${name}</h2><textarea id="editor-text">${text}</textarea><br><button class="btn" onclick="saveText('${path}')">Save to Cloud</button>`;
                 });
-            } else {
-                area.innerHTML = `<h3>Preview not available for .${ext}</h3><p>Use DL button to download.</p>`;
-            }
+            } else { area.innerHTML = `<h2>No Preview</h2><p>${name} is large or not media.</p>`; }
         }
 
         async function saveText(path) {
             const content = btoa(document.getElementById('editor-text').value);
             const getFile = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`);
             const fileData = await getFile.json();
-            
             await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
                 method: "PUT",
-                headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ message: "Edit via Web Interface", content: content, sha: fileData.sha })
+                headers: { "Authorization": `token ${token}` },
+                body: JSON.stringify({ message: "Edit", content: content, sha: fileData.sha })
             });
-            alert("Saved!");
-            closeOverlay();
-            loadVault();
+            alert("Saved!"); closeOverlay(); loadVault(currentPath);
         }
 
         async function uploadFile() {
             const file = document.getElementById('fileInput').files[0];
             if(!file) return;
-            document.getElementById('upStatus').innerText = "Uploading...";
-            
             const reader = new FileReader();
             reader.onload = async () => {
                 const content = reader.result.split(',')[1];
-                await fetch(`https://api.github.com/repos/${repo}/contents/vault/${file.name}`, {
+                await fetch(`https://api.github.com/repos/${repo}/contents/${currentPath}/${file.name}`, {
                     method: "PUT",
                     headers: { "Authorization": `token ${token}` },
                     body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
                 });
-                document.getElementById('upStatus').innerText = "Success!";
-                loadVault();
+                loadVault(currentPath);
             };
             reader.readAsDataURL(file);
         }
 
-        async function deleteFile(path, sha) {
-            if(!confirm("Delete this file?")) return;
-            await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-                method: "DELETE",
-                headers: { "Authorization": `token ${token}` },
-                body: JSON.stringify({ message: "Delete file", sha: sha })
-            });
-            loadVault();
-        }
-
-        function closeOverlay() { document.getElementById('overlay').style.display = 'none'; document.getElementById('contentArea').innerHTML = ''; }
-
+        function closeOverlay() { document.getElementById('overlay').style.display = 'none'; }
         loadVault();
     </script>
 </body>
