@@ -6,25 +6,24 @@
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 40px; margin: 0; }
         .container { max-width: 900px; margin: auto; }
-        #login-screen { display: none; text-align: center; margin-top: 100px; }
-        #app-screen { display: none; }
-        input { padding: 10px; width: 300px; border-radius: 5px; border: 1px solid #333; background: #1a1a1a; color: white; }
+        #login-screen, #app-screen { display: none; }
+        input[type="password"], input[type="file"] { padding: 10px; background: #1a1a1a; color: white; border: 1px solid #333; border-radius: 5px; }
         #path-bar { background: #1a1a1a; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; color: #00ff00; border: 1px solid #333; }
+        .upload-zone { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px dashed #444; text-align: center; }
         #explorer { display: flex; flex-direction: column; gap: 10px; }
-        .item { background: #1e1e1e; padding: 15px 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; transition: 0.2s; }
-        .item:hover { background: #252525; transform: translateX(5px); }
+        .item { background: #1e1e1e; padding: 15px 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
         .folder { color: #ffca28; font-weight: bold; cursor: pointer; flex-grow: 1; }
         .file { color: #81d4fa; }
         button { cursor: pointer; background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 6px; }
-        .logout { background: #ff5252; margin-bottom: 20px; }
+        button.upload-btn { background: #28a745; margin-top: 10px; }
+        .logout { background: #ff5252; }
     </style>
 </head>
 <body>
     <div class="container">
         <div id="login-screen">
             <h1>🔐 Vault Access</h1>
-            <p>Enter your GitHub Token to access your 1PB Storage</p>
-            <input type="password" id="token-input" placeholder="ghp_xxxxxxxxxxxx">
+            <input type="password" id="token-input" placeholder="Enter GitHub Token">
             <button onclick="saveToken()">Login</button>
         </div>
 
@@ -33,7 +32,15 @@
                 <h1>☁️ 1PB Hackintosh Vault</h1>
                 <button class="logout" onclick="logout()">Logout</button>
             </div>
+
             <div id="path-bar">root / vault</div>
+
+            <div class="upload-zone">
+                <p id="upload-label">Upload file to current directory</p>
+                <input type="file" id="file-picker">
+                <button class="upload-btn" onclick="uploadFile()">🚀 Upload to Current Folder</button>
+            </div>
+
             <div id="explorer">Connecting...</div>
         </div>
     </div>
@@ -41,6 +48,7 @@
     <script>
         const REPO = "Codeblub/cloud-stoage";
         let TOKEN = localStorage.getItem('gh_token');
+        let currentPath = "vault";
 
         function checkAuth() {
             if (!TOKEN) {
@@ -54,42 +62,33 @@
         }
 
         function saveToken() {
-            const input = document.getElementById('token-input').value;
-            if (input) {
-                localStorage.setItem('gh_token', input);
-                TOKEN = input;
-                checkAuth();
-            }
+            const val = document.getElementById('token-input').value;
+            if(val) { localStorage.setItem('gh_token', val); TOKEN = val; checkAuth(); }
         }
 
-        function logout() {
-            localStorage.removeItem('gh_token');
-            location.reload();
-        }
+        function logout() { localStorage.removeItem('gh_token'); location.reload(); }
 
         async function loadVault(path = "vault") {
+            currentPath = path;
             const explorer = document.getElementById('explorer');
-            const pathBar = document.getElementById('path-bar');
-            pathBar.innerText = path.replace(/\//g, " ❯ ");
+            document.getElementById('path-bar').innerText = path.replace(/\//g, " ❯ ");
+            document.getElementById('upload-label').innerText = `Target Folder: ${path}`;
             explorer.innerHTML = "Scanning...";
 
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
                     headers: { 'Authorization': `token ${TOKEN}` }
                 });
-                
-                if (res.status === 401) { logout(); return; }
+                if (res.status === 401) logout();
                 const items = await res.json();
                 explorer.innerHTML = "";
 
                 if (path !== "vault") {
                     const back = document.createElement('div');
-                    back.style.cursor = "pointer";
-                    back.innerHTML = "⬅ Go Back";
+                    back.innerHTML = "<span style='cursor:pointer;color:#aaa;'>⬅ Go Back</span>";
                     back.onclick = () => {
-                        const parts = path.split('/');
-                        parts.pop();
-                        loadVault(parts.join('/') || "vault");
+                        const p = path.split('/'); p.pop();
+                        loadVault(p.join('/') || "vault");
                     };
                     explorer.appendChild(back);
                 }
@@ -102,11 +101,32 @@
                         div.innerHTML = `<div class="folder" onclick="loadVault('${item.path}')">📁 ${item.name}/</div>`;
                     } else {
                         const size = (item.size / (1024 * 1024)).toFixed(2);
-                        div.innerHTML = `<div class="file">📄 ${item.name}</div><div><span style='color:#888; font-size:12px; margin-right:10px;'>${size} MB</span><button onclick="window.open('${item.download_url}')">Download</button></div>`;
+                        div.innerHTML = `<div class="file">📄 ${item.name}</div><div><span style='font-size:12px;color:#888;margin-right:10px;'>${size}MB</span><button onclick="window.open('${item.download_url}')">Download</button></div>`;
                     }
                     explorer.appendChild(div);
                 });
-            } catch (e) { explorer.innerHTML = "Error loading files."; }
+            } catch (e) { explorer.innerHTML = "Error loading folder."; }
+        }
+
+        async function uploadFile() {
+            const file = document.getElementById('file-picker').files[0];
+            if (!file) return alert("Select a file first!");
+            
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const content = reader.result.split(',')[1];
+                const dest = `${currentPath}/${file.name}`;
+                
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${dest}`, {
+                    method: "PUT",
+                    headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: `Web upload: ${file.name}`, content: content })
+                });
+
+                if (res.ok) { alert("Upload Successful!"); loadVault(currentPath); }
+                else { alert("Upload failed. File might be too big for web upload (25MB limit)."); }
+            };
+            reader.readAsDataURL(file);
         }
 
         checkAuth();
