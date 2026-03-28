@@ -1,29 +1,65 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>My GitHub Cloud</title>
+    <title>GitHub Cloud Explorer</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
-        .file-card { background: white; padding: 10px; margin: 5px; border-radius: 5px; display: flex; justify-content: space-between; }
+        body { font-family: 'Segoe UI', sans-serif; padding: 40px; background: #1a1a1a; color: white; }
+        .container { max-width: 800px; margin: auto; background: #2d2d2d; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .file-card { background: #3d3d3d; padding: 15px; margin: 10px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .file-card:hover { background: #4d4d4d; }
+        .btn { background: #238636; color: white; padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; }
+        input[type="file"] { margin-bottom: 20px; }
     </style>
 </head>
 <body>
-    <h1>📁 My Cloud Vault</h1>
-    <div id="fileList">Loading files...</div>
+    <div class="container">
+        <h1>☁️ My 200GB Cloud</h1>
+        <input type="file" id="fileInput">
+        <button class="btn" onclick="uploadFile()">Upload to Vault</button>
+        <hr style="border: 0.5px solid #444; margin: 20px 0;">
+        <div id="fileList">Loading your vault...</div>
+    </div>
 
     <script>
-       const TOKEN = prompt("Enter your Token:");// Be careful: only use this on a local file or private site
+        const TOKEN = prompt("Enter your GitHub Token:");
+        const REPO = "Codeblub/cloud-stoage";
+
         async function loadFiles() {
-            const res = await fetch('https://api.github.com/repos/Codeblub/cloud-stoage/contents/vault', {
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault`, {
                 headers: { 'Authorization': `token ${TOKEN}` }
             });
             const files = await res.json();
             const container = document.getElementById('fileList');
             container.innerHTML = '';
             files.forEach(file => {
-                container.innerHTML += `<div class="file-card"><span>${file.name}</span> <a href="${file.download_url}" target="_blank">Download</a></div>`;
+                if(file.name !== ".gitkeep") {
+                    container.innerHTML += `
+                        <div class="file-card">
+                            <span>📄 ${file.name}</span>
+                            <a class="btn" href="${file.download_url}" target="_blank">Download</a>
+                        </div>`;
+                }
             });
         }
+
+        async function uploadFile() {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) return alert("Select a file first!");
+            
+            const reader = new FileReader();
+            reader.onload = async () => {
+                const content = reader.result.split(',')[1];
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/vault/${file.name}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
+                });
+                if (res.ok) { alert("Upload Success!"); loadFiles(); }
+                else { alert("Upload Failed. Check token permissions."); }
+            };
+            reader.readAsDataURL(file);
+        }
+
         loadFiles();
     </script>
 </body>
