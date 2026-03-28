@@ -1,0 +1,19 @@
+name: GitHub Cloud Runner
+on:
+  workflow_dispatch: # This adds a manual "Run" button
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Octokit
+        run: npm install octokit
+      - name: Run Upload Script
+        env:
+          MY_CLOUD_TOKEN: ${{ secrets.MY_CLOUD_TOKEN }}
+        run: node upload.js
