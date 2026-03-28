@@ -7,40 +7,36 @@
         body { font-family: 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 40px; margin: 0; }
         .container { max-width: 900px; margin: auto; }
         #login-screen, #app-screen { display: none; }
-        input[type="password"], input[type="file"] { padding: 10px; background: #1a1a1a; color: white; border: 1px solid #333; border-radius: 5px; }
+        input { padding: 10px; background: #1a1a1a; color: white; border: 1px solid #333; border-radius: 5px; margin-bottom: 10px; }
         #path-bar { background: #1a1a1a; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; color: #00ff00; border: 1px solid #333; }
         .upload-zone { background: #1e1e1e; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 2px dashed #444; text-align: center; }
-        #explorer { display: flex; flex-direction: column; gap: 10px; }
+        #explorer { display: flex; flex-direction: column; gap: 8px; }
         .item { background: #1e1e1e; padding: 15px 20px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
         .folder { color: #ffca28; font-weight: bold; cursor: pointer; flex-grow: 1; }
         .file { color: #81d4fa; }
+        .sliced-badge { background: #444; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 10px; color: #aaa; }
         button { cursor: pointer; background: #007bff; color: white; border: none; padding: 8px 16px; border-radius: 6px; }
-        button.upload-btn { background: #28a745; margin-top: 10px; }
-        .logout { background: #ff5252; }
+        button.logout { background: #ff5252; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div id="login-screen">
+        <div id="login-screen" style="text-align:center; padding-top:100px;">
             <h1>🔐 Vault Access</h1>
-            <input type="password" id="token-input" placeholder="Enter GitHub Token">
+            <input type="password" id="token-input" placeholder="Enter GitHub Token"><br>
             <button onclick="saveToken()">Login</button>
         </div>
 
         <div id="app-screen">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h1>☁️ 1PB Hackintosh Vault</h1>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h1>☁️ 1PB Vault</h1>
                 <button class="logout" onclick="logout()">Logout</button>
             </div>
-
             <div id="path-bar">root / vault</div>
-
             <div class="upload-zone">
-                <p id="upload-label">Upload file to current directory</p>
                 <input type="file" id="file-picker">
-                <button class="upload-btn" onclick="uploadFile()">🚀 Upload to Current Folder</button>
+                <button onclick="uploadFile()" style="background:#28a745;">🚀 Upload</button>
             </div>
-
             <div id="explorer">Connecting...</div>
         </div>
     </div>
@@ -50,86 +46,83 @@
         let TOKEN = localStorage.getItem('gh_token');
         let currentPath = "vault";
 
-        function checkAuth() {
-            if (!TOKEN) {
-                document.getElementById('login-screen').style.display = 'block';
-                document.getElementById('app-screen').style.display = 'none';
-            } else {
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('app-screen').style.display = 'block';
-                loadVault();
-            }
-        }
-
-        function saveToken() {
-            const val = document.getElementById('token-input').value;
-            if(val) { localStorage.setItem('gh_token', val); TOKEN = val; checkAuth(); }
-        }
-
+        function saveToken() { localStorage.setItem('gh_token', document.getElementById('token-input').value); location.reload(); }
         function logout() { localStorage.removeItem('gh_token'); location.reload(); }
 
         async function loadVault(path = "vault") {
+            if (!TOKEN) { document.getElementById('login-screen').style.display='block'; return; }
+            document.getElementById('app-screen').style.display='block';
             currentPath = path;
             const explorer = document.getElementById('explorer');
             document.getElementById('path-bar').innerText = path.replace(/\//g, " ❯ ");
-            document.getElementById('upload-label').innerText = `Target Folder: ${path}`;
-            explorer.innerHTML = "Scanning...";
+            explorer.innerHTML = "Grouping files...";
 
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
                     headers: { 'Authorization': `token ${TOKEN}` }
                 });
-                if (res.status === 401) logout();
-                const items = await res.json();
+                const rawItems = await res.json();
                 explorer.innerHTML = "";
 
-                if (path !== "vault") {
-                    const back = document.createElement('div');
-                    back.innerHTML = "<span style='cursor:pointer;color:#aaa;'>⬅ Go Back</span>";
-                    back.onclick = () => {
-                        const p = path.split('/'); p.pop();
-                        loadVault(p.join('/') || "vault");
-                    };
-                    explorer.appendChild(back);
-                }
+                // Grouping Logic
+                const fileMap = {};
+                const folders = [];
 
-                items.forEach(item => {
-                    if (item.name.includes(".part")) return;
+                rawItems.forEach(item => {
+                    if (item.type === "dir") {
+                        folders.push(item);
+                    } else {
+                        const cleanName = item.name.split('.part')[0];
+                        if (!fileMap[cleanName]) {
+                            fileMap[cleanName] = { name: cleanName, size: 0, isSliced: false, url: item.download_url };
+                        }
+                        fileMap[cleanName].size += item.size;
+                        if (item.name.includes('.part')) fileMap[cleanName].isSliced = true;
+                    }
+                });
+
+                // Render Folders
+                folders.forEach(f => {
                     const div = document.createElement('div');
                     div.className = "item";
-                    if (item.type === "dir") {
-                        div.innerHTML = `<div class="folder" onclick="loadVault('${item.path}')">📁 ${item.name}/</div>`;
-                    } else {
-                        const size = (item.size / (1024 * 1024)).toFixed(2);
-                        div.innerHTML = `<div class="file">📄 ${item.name}</div><div><span style='font-size:12px;color:#888;margin-right:10px;'>${size}MB</span><button onclick="window.open('${item.download_url}')">Download</button></div>`;
-                    }
+                    div.innerHTML = `<div class="folder" onclick="loadVault('${f.path}')">📁 ${f.name}/</div>`;
                     explorer.appendChild(div);
                 });
-            } catch (e) { explorer.innerHTML = "Error loading folder."; }
+
+                // Render Files (Clean view)
+                Object.values(fileMap).forEach(f => {
+                    const div = document.createElement('div');
+                    div.className = "item";
+                    const sizeMB = (f.size / (1024 * 1024)).toFixed(2);
+                    div.innerHTML = `
+                        <div class="file">📄 ${f.name} ${f.isSliced ? '<span class="sliced-badge">SLICED</span>' : ''}</div>
+                        <div>
+                            <span style="color:#888; font-size:12px; margin-right:10px;">${sizeMB} MB</span>
+                            <button onclick="window.open('${f.url}')">Download</button>
+                        </div>`;
+                    explorer.appendChild(div);
+                });
+            } catch (e) { explorer.innerHTML = "Error loading files."; }
         }
 
         async function uploadFile() {
             const file = document.getElementById('file-picker').files[0];
-            if (!file) return alert("Select a file first!");
-            
+            if (!file) return;
             const reader = new FileReader();
             reader.onload = async () => {
                 const content = reader.result.split(',')[1];
-                const dest = `${currentPath}/${file.name}`;
-                
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${dest}`, {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentPath}/${file.name}`, {
                     method: "PUT",
                     headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `Web upload: ${file.name}`, content: content })
+                    body: JSON.stringify({ message: "Web Upload", content: content })
                 });
-
-                if (res.ok) { alert("Upload Successful!"); loadVault(currentPath); }
-                else { alert("Upload failed. File might be too big for web upload (25MB limit)."); }
+                if (res.ok) loadVault(currentPath);
             };
             reader.readAsDataURL(file);
         }
 
-        checkAuth();
+        if (TOKEN) loadVault();
+        else document.getElementById('login-screen').style.display='block';
     </script>
 </body>
 </html>
