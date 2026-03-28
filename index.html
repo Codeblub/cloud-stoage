@@ -1,99 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GitHub 1PB Cloud Explorer</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; padding: 20px; }
-        .container { max-width: 800px; margin: auto; background: #1e1e1e; padding: 20px; border-radius: 10px; }
-        .file-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; align-items: center; }
-        .file-item:hover { background: #252525; }
-        .actions { display: flex; gap: 10px; }
-        button, a { padding: 5px 10px; border-radius: 5px; cursor: pointer; text-decoration: none; color: white; border: none; }
-        .delete-btn { background: #d9534f; }
-        .download-btn { background: #5cb85c; }
-        .split-tag { background: #f0ad4e; font-size: 0.7em; padding: 2px 5px; border-radius: 3px; }
+        body { font-family: sans-serif; background: #1a1a1a; color: white; padding: 20px; }
+        .item { background: #2a2a2a; margin: 5px 0; padding: 10px; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .folder { color: #ffca28; font-weight: bold; cursor: pointer; }
+        .file { color: #81d4fa; }
+        button { cursor: pointer; margin-left: 10px; background: #444; color: white; border: none; padding: 5px 10px; border-radius: 3px; }
+        button:hover { background: #666; }
+        #path-display { margin-bottom: 20px; color: #aaa; font-size: 0.9em; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>☁️ 1PB Hackintosh Vault</h1>
-        <button onclick="fetchFiles()" style="background: #3498db; margin-bottom: 20px;">🔄 Refresh List</button>
-        <div id="file-list">Loading files...</div>
-    </div>
+    <h1>☁️ 1PB Hackintosh Vault</h1>
+    <div id="path-display">Root / vault</div>
+    <div id="explorer">Loading vault...</div>
 
     <script>
         const REPO = "Codeblub/cloud-stoage";
-        const TOKEN = "YOUR_GITHUB_TOKEN_HERE"; // Be careful with tokens in HTML!
+        const TOKEN = "YOUR_GITHUB_TOKEN_HERE"; // It's safer to use a token with only 'public_repo' access
+        let currentPath = "vault";
 
-        async function fetchFiles() {
-            const list = document.getElementById('file-list');
+        async function loadVault(path = "vault") {
+            currentPath = path;
+            document.getElementById('path-display').innerText = `Location: ${path}`;
+            const explorer = document.getElementById('explorer');
+            explorer.innerHTML = "Scanning...";
+
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO/contents/vault}`, {
+                const res = await fetch(`https://api.github.com/repos/${REPO/contents/${path}`, {
                     headers: { 'Authorization': `token ${TOKEN}` }
                 });
-                const files = await res.json();
-                renderFiles(files);
-            } catch (e) { list.innerHTML = "Error loading files."; }
-        }
-
-        function renderFiles(files) {
-            const list = document.getElementById('file-list');
-            list.innerHTML = '';
-            const groups = {};
-
-            files.forEach(file => {
-                const splitMatch = file.name.match(/^(.*)\.part\d+$/);
-                const groupName = splitMatch ? splitMatch[1] : file.name;
-
-                if (!groups[groupName]) {
-                    groups[groupName] = {
-                        name: groupName,
-                        totalSize: 0,
-                        isSplit: false,
-                        parts: []
-                    };
-                }
-                groups[groupName].totalSize += file.size;
-                groups[groupName].parts.push({ name: file.name, sha: file.sha, url: file.download_url });
-                if (splitMatch) groups[groupName].isSplit = true;
-            });
-
-            Object.values(groups).forEach(group => {
-                const item = document.createElement('div');
-                item.className = 'file-item';
-                const sizeMB = (group.totalSize / (1024 * 1024)).toFixed(2);
+                const items = await res.json();
                 
-                item.innerHTML = `
-                    <span>
-                        ${group.isSplit ? '📦' : '📄'} 
-                        <strong>${group.name}</strong> 
-                        ${group.isSplit ? '<span class="split-tag">SPLIT</span>' : ''}
-                        <br><small style="color:#888">${sizeMB} MB</small>
-                    </span>
-                    <div class="actions">
-                        ${!group.isSplit ? `<a class="download-btn" href="${group.parts[0].url}" target="_blank">Download</a>` : `<span style="color:#888; font-size:12px">Use Merge Script</span>`}
-                        <button class="delete-btn" onclick="bulkDelete(${JSON.stringify(group.parts)})">Delete</button>
-                    </div>
-                `;
-                list.appendChild(item);
-            });
-        }
+                explorer.innerHTML = "";
+                
+                // Add a "Back" button if not in root
+                if (path !== "vault") {
+                    const backDiv = document.createElement('div');
+                    backDiv.className = "item folder";
+                    backDiv.innerHTML = "📁 .. (Go Back)";
+                    backDiv.onclick = () => {
+                        const parts = path.split('/');
+                        parts.pop();
+                        loadVault(parts.join('/'));
+                    };
+                    explorer.appendChild(backDiv);
+                }
 
-        async function bulkDelete(parts) {
-            if (!confirm(`Delete this file and its ${parts.length} parts?`)) return;
-            for (let part of parts) {
-                await fetch(`https://api.github.com/repos/${REPO/contents/vault/}${part.name}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `token ${TOKEN}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: `Delete ${part.name}`, sha: part.sha })
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "item";
+                    
+                    if (item.type === "dir") {
+                        div.innerHTML = `<span class="folder">📁 ${item.name}/</span> <span>Folder</span>`;
+                        div.onclick = () => loadVault(item.path);
+                    } else {
+                        const size = (item.size / (1024 * 1024)).toFixed(2);
+                        div.innerHTML = `
+                            <span class="file">📄 ${item.name}</span>
+                            <span>(${size} MB) 
+                                <button onclick="window.open('${item.download_url}')">Download</button>
+                            </span>`;
+                    }
+                    explorer.appendChild(div);
                 });
+            } catch (e) {
+                explorer.innerHTML = "Error loading files. Check your Token or Repo.";
             }
-            fetchFiles();
         }
 
-        fetchFiles();
+        loadVault();
     </script>
 </body>
 </html>
