@@ -10,48 +10,98 @@
         .btn { cursor: pointer; padding: 6px 12px; border: 1px solid #00ff41; background: none; color: #00ff41; margin-left: 5px; text-decoration: none; font-family: monospace; }
         .btn:hover { background: #00ff41; color: #000; }
         .btn:disabled { border-color: #444; color: #444; cursor: not-allowed; }
+        
+        /* Login Screen */
+        #login-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        #token-input { background: #111; border: 1px solid #00ff41; color: #00ff41; padding: 10px; width: 350px; margin-bottom: 15px; text-align: center; font-family: monospace; }
+        
         #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         #editor-text { width: 90%; height: 70%; background: #111; color: #00ff41; border: 1px solid #444; padding: 10px; font-family: monospace; font-size: 14px; }
         .upload-section { margin-bottom: 20px; padding: 15px; border: 1px dashed #444; }
         .status-tag { background: #004400; color: #fff; padding: 2px 6px; font-size: 10px; margin-left: 10px; border-radius: 3px; }
-        #breadcrumb { color: #00ff41; cursor: pointer; margin-bottom: 15px; font-size: 1.2em; }
+        #breadcrumb { color: #00ff41; cursor: pointer; margin-bottom: 15px; font-size: 1.2em; border-bottom: 1px solid #00ff41; display: inline-block; padding-bottom: 2px; }
+        .hidden { display: none !important; }
+        audio, video { width: 80%; max-width: 800px; border: 1px solid #00ff41; }
     </style>
 </head>
 <body>
 
-    <h1>☁️ 1PB Vault Engine</h1>
-
-    <div class="upload-section">
-        <input type="file" id="fileInput">
-        <button class="btn" onclick="uploadFile()">Push to Cloud</button>
-        <span id="upStatus" style="margin-left:10px;"></span>
+    <div id="login-screen">
+        <h1>🔒 VAULT LOCKDOWN</h1>
+        <p>Your token is NOT in the code. Enter it below to unlock.</p>
+        <input type="password" id="token-input" placeholder="Enter ghp_token here...">
+        <br>
+        <button class="btn" onclick="unlockVault()">START ENGINE</button>
+        <p style="font-size: 11px; color: #666; margin-top: 30px; max-width: 400px;">
+            The token is saved to your browser's <b>localStorage</b>. It is never sent anywhere except GitHub's official API.
+        </p>
     </div>
 
-    <div id="breadcrumb" onclick="loadVault('vault')">🏠 Root</div>
-    <div id="fileList">Scanning Vault...</div>
+    <div id="main-content" class="hidden">
+        <h1>☁️ 1PB Vault Engine</h1>
+        
+        <div class="upload-section">
+            <input type="file" id="fileInput">
+            <button class="btn" onclick="uploadFile()">Push to Cloud</button>
+            <button class="btn" style="float: right; border-color: #ff4141; color: #ff4141;" onclick="lockVault()">Lock Vault</button>
+            <span id="upStatus" style="margin-left:10px;"></span>
+        </div>
+
+        <div id="breadcrumb" onclick="loadVault('vault')">🏠 Root</div>
+        <div id="fileList">Initializing...</div>
+    </div>
 
     <div id="overlay">
-        <button class="btn" style="margin-bottom: 15px;" onclick="closeOverlay()">[ X ] CLOSE</button>
+        <button class="btn" style="margin-bottom: 15px;" onclick="closeOverlay()">[ X ] CLOSE PREVIEW</button>
         <div id="contentArea" style="width:100%; text-align:center;"></div>
     </div>
 
     <script>
         const repo = "Codeblub/cloud-stoage";
-        const token = "YOUR_GITHUB_TOKEN_HERE"; // Ensure your token is here
+        let token = localStorage.getItem('vault_token');
         let currentPath = "vault";
+
+        // Initial Boot Logic
+        if (token) {
+            showMain();
+        }
+
+        function unlockVault() {
+            const val = document.getElementById('token-input').value.trim();
+            if (val.startsWith('ghp_')) {
+                localStorage.setItem('vault_token', val);
+                token = val;
+                showMain();
+            } else {
+                alert("Invalid format. Tokens usually start with 'ghp_'.");
+            }
+        }
+
+        function showMain() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            loadVault();
+        }
+
+        function lockVault() {
+            localStorage.removeItem('vault_token');
+            location.reload();
+        }
 
         async function loadVault(path = "vault") {
             currentPath = path;
             const breadcrumbText = path === "vault" ? "🏠 Root" : `🏠 Root / ${path.replace('vault/', '')}`;
             document.getElementById('breadcrumb').innerText = breadcrumbText;
-            
+            document.getElementById('fileList').innerText = "Scanning...";
+
             try {
                 const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
                     headers: { "Authorization": `token ${token}` }
                 });
+                
+                if (!res.ok) throw new Error("Unauthorized");
                 const rawFiles = await res.json();
                 
-                // Group Parts into Single Files
                 const processed = new Map();
                 rawFiles.forEach(f => {
                     if(f.name === "placeholder.txt" || f.name === "index.html") return;
@@ -72,13 +122,14 @@
                         entry.isLarge = true;
                         entry.parts.push({path: f.path, sha: f.sha});
                     } else {
-                        entry.sha = f.sha; // Keep SHA for single files
+                        entry.sha = f.sha; 
                     }
                 });
 
                 renderFiles(processed);
             } catch (err) {
-                document.getElementById('fileList').innerHTML = "Error loading files. Check console/token.";
+                alert("Access Denied. Token might be expired.");
+                lockVault();
             }
         }
 
@@ -87,10 +138,8 @@
             fileMap.forEach(f => {
                 const isDir = f.type === 'dir';
                 const label = isDir ? '📁' : '📄';
-                const largeTag = f.isLarge ? `<span class="status-tag">LARGE (${f.parts.length} PARTS)</span>` : "";
-                
-                // Data attributes used for deletion logic
-                const partsData = JSON.stringify(f.parts);
+                const largeTag = f.isLarge ? `<span class="status-tag">SPLIT (${f.parts.length} PARTS)</span>` : "";
+                const partsJSON = JSON.stringify(f.parts).replace(/"/g, '&quot;');
                 
                 html += `
                 <div class="file-item">
@@ -98,9 +147,9 @@
                         ${label} <strong>${f.name}</strong> ${largeTag}
                     </span>
                     <div>
-                        ${f.isLarge ? `<button class="btn" disabled title="Sync to E: Drive to open">CLOUD ONLY</button>` : `<button class="btn" onclick="window.open('${f.download_url}')">DL</button>`}
+                        ${f.isLarge ? `<button class="btn" disabled title="Use E: Drive to Reassemble">CLOUD ONLY</button>` : `<button class="btn" onclick="window.open('${f.download_url}')">DL</button>`}
                         <button class="btn" style="border-color:red; color:red;" id="del-${f.name.replace(/\W/g,'')}" 
-                            onclick="handleDelete('${f.name}', '${f.path}', '${f.sha}', ${f.isLarge}, ${partsData.replace(/"/g, '&quot;')})">DEL</button>
+                            onclick="handleDelete('${f.name}', '${f.path}', '${f.sha}', ${f.isLarge}, ${partsJSON})">DEL</button>
                     </div>
                 </div>`;
             });
@@ -114,24 +163,29 @@
             btn.disabled = true;
             btn.innerText = "⏳...";
 
-            if (isLarge) {
-                for(let i = 0; i < parts.length; i++) {
-                    btn.innerText = `${i+1}/${parts.length}`;
-                    await deleteRequest(parts[i].path, parts[i].sha);
+            try {
+                if (isLarge) {
+                    for(let i = 0; i < parts.length; i++) {
+                        btn.innerText = `${i+1}/${parts.length}`;
+                        await fetch(`https://api.github.com/repos/${repo}/contents/${parts[i].path}`, {
+                            method: "DELETE",
+                            headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ message: "Delete Part", sha: parts[i].sha })
+                        });
+                    }
+                } else {
+                    await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+                        method: "DELETE",
+                        headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ message: "Delete File", sha: sha })
+                    });
                 }
-            } else {
-                await deleteRequest(path, sha);
+                loadVault(currentPath);
+            } catch (e) {
+                alert("Delete failed.");
+                btn.disabled = false;
+                btn.innerText = "DEL";
             }
-
-            loadVault(currentPath);
-        }
-
-        async function deleteRequest(path, sha) {
-            return fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-                method: "DELETE",
-                headers: { "Authorization": `token ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ message: "Delete via Web", sha: sha })
-            });
         }
 
         function openFile(url, name, path) {
@@ -146,10 +200,10 @@
                 area.innerHTML = `<video controls autoplay src="${url}" style="max-height:60vh;"></video><h2>${name}</h2>`;
             } else if (['txt', 'env', 'json', 'js', 'html', 'md'].includes(ext)) {
                 fetch(url).then(r => r.text()).then(text => {
-                    area.innerHTML = `<h2>Editing: ${name}</h2><textarea id="editor-text">${text}</textarea><br><button class="btn" onclick="saveText('${path}')">Save to Cloud</button>`;
+                    area.innerHTML = `<h2>Editing: ${name}</h2><textarea id="editor-text">${text}</textarea><br><button class="btn" onclick="saveText('${path}')">Save Changes</button>`;
                 });
             } else {
-                area.innerHTML = `<h2>No Preview</h2><p>${name} must be downloaded to view.</p>`;
+                area.innerHTML = `<h2>No Preview</h2><p>${name} must be downloaded or synced to E: Drive.</p>`;
             }
         }
 
@@ -164,7 +218,7 @@
                 headers: { "Authorization": `token ${token}` },
                 body: JSON.stringify({ message: "Edit", content: content, sha: fileData.sha })
             });
-            alert("Saved!"); closeOverlay(); loadVault(currentPath);
+            alert("Changes Saved!"); closeOverlay(); loadVault(currentPath);
         }
 
         async function uploadFile() {
@@ -173,7 +227,7 @@
             const file = fileInput.files[0];
             if(!file) return;
 
-            status.innerText = "Processing...";
+            status.innerText = "Encoding...";
             const reader = new FileReader();
             reader.onload = async () => {
                 const content = reader.result.split(',')[1];
@@ -183,7 +237,7 @@
                     body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
                 });
                 if(res.ok) {
-                    status.innerText = "✅ Done!";
+                    status.innerText = "✅ Uploaded!";
                     fileInput.value = "";
                     loadVault(currentPath);
                 } else { status.innerText = "❌ Error"; }
@@ -192,8 +246,6 @@
         }
 
         function closeOverlay() { document.getElementById('overlay').style.display = 'none'; }
-        
-        loadVault();
     </script>
 </body>
 </html>
