@@ -28,12 +28,12 @@
 
     <div id="login-screen">
         <h1>🔒 VAULT LOCKDOWN</h1>
-        <p>Your token is NOT in the code. Enter it below to unlock.</p>
-        <input type="password" id="token-input" placeholder="Enter ghp_token here...">
+        <p>Enter your <b>Fine-grained</b> or <b>Classic</b> token below:</p>
+        <input type="password" id="token-input" placeholder="github_pat_... or ghp_...">
         <br>
         <button class="btn" onclick="unlockVault()">START ENGINE</button>
         <p style="font-size: 11px; color: #666; margin-top: 30px; max-width: 400px;">
-            The token is saved to your browser's <b>localStorage</b>. It is never sent anywhere except GitHub's official API.
+            Token is saved to your browser's <b>localStorage</b>.
         </p>
     </div>
 
@@ -61,19 +61,17 @@
         let token = localStorage.getItem('vault_token');
         let currentPath = "vault";
 
-        // Initial Boot Logic
-        if (token) {
-            showMain();
-        }
+        if (token) { showMain(); }
 
         function unlockVault() {
             const val = document.getElementById('token-input').value.trim();
-            if (val.startsWith('ghp_')) {
+            // ALLOWS BOTH TOKEN TYPES
+            if (val.startsWith('ghp_') || val.startsWith('github_pat_')) {
                 localStorage.setItem('vault_token', val);
                 token = val;
                 showMain();
             } else {
-                alert("Invalid format. Tokens usually start with 'ghp_'.");
+                alert("Invalid format! Fine-grained tokens must start with 'github_pat_'.");
             }
         }
 
@@ -105,30 +103,24 @@
                 const processed = new Map();
                 rawFiles.forEach(f => {
                     if(f.name === "placeholder.txt" || f.name === "index.html") return;
-                    
                     let baseName = f.name;
                     let isPart = false;
                     if (f.name.includes('.part')) {
                         baseName = f.name.split('.part')[0];
                         isPart = true;
                     }
-
                     if (!processed.has(baseName)) {
                         processed.set(baseName, { ...f, name: baseName, isLarge: false, parts: [] });
                     }
-                    
                     const entry = processed.get(baseName);
                     if (isPart) {
                         entry.isLarge = true;
                         entry.parts.push({path: f.path, sha: f.sha});
-                    } else {
-                        entry.sha = f.sha; 
-                    }
+                    } else { entry.sha = f.sha; }
                 });
-
                 renderFiles(processed);
             } catch (err) {
-                alert("Access Denied. Token might be expired.");
+                alert("Login Failed: Token invalid or lacks 'repo' permissions.");
                 lockVault();
             }
         }
@@ -147,7 +139,7 @@
                         ${label} <strong>${f.name}</strong> ${largeTag}
                     </span>
                     <div>
-                        ${f.isLarge ? `<button class="btn" disabled title="Use E: Drive to Reassemble">CLOUD ONLY</button>` : `<button class="btn" onclick="window.open('${f.download_url}')">DL</button>`}
+                        ${f.isLarge ? `<button class="btn" disabled title="Sync to E: Drive to open">CLOUD ONLY</button>` : `<button class="btn" onclick="window.open('${f.download_url}')">DL</button>`}
                         <button class="btn" style="border-color:red; color:red;" id="del-${f.name.replace(/\W/g,'')}" 
                             onclick="handleDelete('${f.name}', '${f.path}', '${f.sha}', ${f.isLarge}, ${partsJSON})">DEL</button>
                     </div>
@@ -159,10 +151,8 @@
         async function handleDelete(name, path, sha, isLarge, parts) {
             const btn = document.getElementById(`del-${name.replace(/\W/g,'')}`);
             if(!confirm(`Permanently delete ${name}?`)) return;
-
             btn.disabled = true;
             btn.innerText = "⏳...";
-
             try {
                 if (isLarge) {
                     for(let i = 0; i < parts.length; i++) {
@@ -193,7 +183,6 @@
             const overlay = document.getElementById('overlay');
             const ext = name.split('.').pop().toLowerCase();
             overlay.style.display = 'flex';
-
             if (['mp3', 'wav', 'ogg'].includes(ext)) {
                 area.innerHTML = `<audio controls autoplay src="${url}"></audio><h2>${name}</h2>`;
             } else if (['mp4', 'webm'].includes(ext)) {
@@ -202,16 +191,12 @@
                 fetch(url).then(r => r.text()).then(text => {
                     area.innerHTML = `<h2>Editing: ${name}</h2><textarea id="editor-text">${text}</textarea><br><button class="btn" onclick="saveText('${path}')">Save Changes</button>`;
                 });
-            } else {
-                area.innerHTML = `<h2>No Preview</h2><p>${name} must be downloaded or synced to E: Drive.</p>`;
-            }
+            } else { area.innerHTML = `<h2>No Preview</h2><p>${name} must be downloaded or synced to E: Drive.</p>`; }
         }
 
         async function saveText(path) {
             const content = btoa(unescape(encodeURIComponent(document.getElementById('editor-text').value)));
-            const getFile = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
-                headers: { "Authorization": `token ${token}` }
-            });
+            const getFile = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers: { "Authorization": `token ${token}` } });
             const fileData = await getFile.json();
             await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
                 method: "PUT",
@@ -226,7 +211,6 @@
             const status = document.getElementById('upStatus');
             const file = fileInput.files[0];
             if(!file) return;
-
             status.innerText = "Encoding...";
             const reader = new FileReader();
             reader.onload = async () => {
@@ -236,11 +220,7 @@
                     headers: { "Authorization": `token ${token}` },
                     body: JSON.stringify({ message: `Upload ${file.name}`, content: content })
                 });
-                if(res.ok) {
-                    status.innerText = "✅ Uploaded!";
-                    fileInput.value = "";
-                    loadVault(currentPath);
-                } else { status.innerText = "❌ Error"; }
+                if(res.ok) { status.innerText = "✅ Uploaded!"; fileInput.value = ""; loadVault(currentPath); } else { status.innerText = "❌ Error"; }
             };
             reader.readAsDataURL(file);
         }
