@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1PB Vault Control</title>
+    <style>
+        :root { --neon: #00ff41; --dim: #003b00; }
+        body { background: #000; color: var(--neon); font-family: 'Courier New', monospace; margin: 0; text-transform: uppercase; overflow-x: hidden; }
+        body::before { content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; pointer-events: none; background-size: 100% 2px, 3px 100%; }
+        #lockscreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; display: flex; justify-content: center; align-items: center; }
+        .lock-box { border: 2px solid var(--neon); padding: 40px; text-align: center; box-shadow: 0 0 20px var(--dim); }
+        #main-ui { display: none; padding: 20px; }
+        .box { border: 1px solid var(--neon); padding: 15px; margin-bottom: 20px; background: rgba(0,20,0,0.2); }
+        #viewer { display: none; border: 2px solid var(--neon); padding: 15px; background: #050505; margin-bottom: 20px; text-align: center; }
+        #viewer img, #viewer video { max-width: 100%; border: 1px solid var(--neon); }
+        textarea { width: 100%; height: 400px; background: #000; color: var(--neon); border: 1px solid var(--neon); font-family: inherit; padding: 10px; }
+        button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; transition: 0.2s; }
+        button:hover { background: #fff; box-shadow: 0 0 10px var(--neon); }
+        input { background: #000; border: 1px solid var(--neon); color: var(--neon); padding: 8px; }
+        .file-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--dim); align-items: center; }
+        .folder-icon { color: yellow; font-weight: bold; margin-right: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="lockscreen">
+        <div class="lock-box">
+            <h1>[VAULT LOCKED]</h1>
+            <input type="password" id="pass-key" placeholder="ACCESS TOKEN...">
+            <button onclick="unlock()">DECRYPT</button>
+        </div>
+    </div>
+
+    <div id="main-ui">
+        <div class="box">
+            <h2>1PB VAULT OS</h2>
+            <button onclick="logout()">TERMINATE SESSION</button>
+            <button onclick="createNewFolder()" style="background: yellow;">+ NEW FOLDER</button>
+        </div>
+
+        <div id="viewer" class="box">
+            <h3 id="view-title">MEDIA_VIEWER</h3>
+            <div id="view-content" style="margin-bottom:15px;"></div>
+            <button onclick="closeViewer()">CLOSE</button>
+            <button id="save-btn" style="display:none;" onclick="saveText()">OVERWRITE_FILE</button>
+        </div>
+
+        <div class="box">
+            <h3>UPLINK</h3>
+            <input type="file" id="file-input">
+            <button onclick="upload()">TRANSFER</button>
+            <div id="up-zone" style="margin-top:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:0.8em;">
+                    <span id="up-pct">0%</span><span id="up-eta">ETA: --:--</span>
+                </div>
+                <div id="p-cont" style="display:none; border:1px solid var(--neon); height:20px;"><div id="p-bar" style="height:100%; background:var(--neon); width:0%;"></div></div>
+            </div>
+        </div>
+
+        <div class="box">
+            <h3>MANIFEST <span id="current-path" style="font-size:0.7em; color:var(--dim);">/vault</span></h3>
+            <button onclick="goBack()">.. BACK</button>
+            <button onclick="fetchFiles()">REFRESH</button>
+            <div id="file-list"></div>
+        </div>
+    </div>
+
+    <script>
+        const REPO = "Codeblub/cloud-stoage";
+        let currentDir = "vault";
+        let startTime, currentFile = {};
+
+        window.onload = () => { if (localStorage.getItem('v_auth')) showUI(); };
+        function unlock() { const k = document.getElementById('pass-key').value; if(k.length < 5) return; localStorage.setItem('v_auth', k); showUI(); }
+        function showUI() { document.getElementById('lockscreen').style.display="none"; document.getElementById('main-ui').style.display="block"; fetchFiles(); }
+        function logout() { localStorage.removeItem('v_auth'); location.reload(); }
+
+        async function fetchFiles() {
+            const tk = localStorage.getItem('v_auth');
+            const list = document.getElementById('file-list');
+            document.getElementById('current-path').innerText = `/${currentDir}`;
+            list.innerHTML = "SYNCING...";
+            
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, { headers: {'Authorization': `token ${tk}`} });
+            const data = await res.json();
+            list.innerHTML = "";
+            
+            data.forEach(f => {
+                const isDir = f.type === "dir";
+                const div = document.createElement('div');
+                div.className = 'file-row';
+                div.innerHTML = `
+                    <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
+                    <div>
+                        ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="openMedia('${f.download_url}', '${f.name}')">GET</button>`}
+                        ${!isDir && f.name.match(/\.(txt|yaml|json|ps1|bat)$/) ? `<button onclick="editText('${f.path}','${f.sha}')">EDIT</button>` : ''}
+                        <button onclick="renameItem('${f.path}', '${f.name}', ${isDir})">NAME</button>
+                        <button style="background:red" onclick="deleteItem('${f.path}','${f.sha}', ${isDir})">X</button>
+                    </div>`;
+                list.appendChild(div);
+            });
+        }
+
+        function enterDir(path) { currentDir = path; fetchFiles(); }
+        function goBack() { if(currentDir === "vault") return; let parts = currentDir.split('/'); parts.pop(); currentDir = parts.join('/'); fetchFiles(); }
+
+        async function createNewFolder() {
+            const name = prompt("Enter Folder Name:");
+            if(!name) return;
+            const tk = localStorage.getItem('v_auth');
+            // GitHub doesn't have empty folders, so we create a .keep file
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${name}/.keep`, {
+                method: 'PUT', headers: {'Authorization': `token ${tk}`},
+                body: JSON.stringify({ message: `Create folder ${name}`, content: btoa(" ") })
+            });
+            fetchFiles();
+        }
+
+        async function renameItem(path, oldName, isDir) {
+            const newName = prompt("Rename to:", oldName);
+            if(!newName || newName === oldName) return;
+            const tk = localStorage.getItem('v_auth');
+
+            // GitHub "Rename" = Copy to new path + Delete old path
+            alert("PROCESSING RE-INDEXING...");
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: {'Authorization': `token ${tk}`} });
+            const data = await res.json();
+            
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${newName}`, {
+                method: 'PUT', headers: {'Authorization': `token ${tk}`},
+                body: JSON.stringify({ message: "rename", content: data.content, sha: null })
+            });
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                method: 'DELETE', headers: {'Authorization': `token ${tk}`},
+                body: JSON.stringify({ message: "rename-cleanup", sha: data.sha })
+            });
+            fetchFiles();
+        }
+
+        async function upload() {
+            const tk = localStorage.getItem('v_auth');
+            const file = document.getElementById('file-input').files[0];
+            if(!file) return;
+            document.getElementById('p-cont').style.display='block';
+            startTime = Date.now();
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const content = reader.result.split(',')[1];
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${file.name}`, {
+                    method: 'PUT', headers: {'Authorization': `token ${tk}`},
+                    body: JSON.stringify({ message: "uplink", content })
+                });
+                if(res.ok) { document.getElementById('p-bar').style.width="100%"; fetchFiles(); }
+            };
+            let p = 0; const t = setInterval(() => { p+=2; if(p>98) clearInterval(t); updateProgress(p); }, 150);
+        }
+
+        async function deleteItem(p, s, isDir) {
+            if(!confirm(`PERMANENTLY DELETE ${isDir ? 'FOLDER AND CONTENTS' : 'FILE'}?`)) return;
+            const tk = localStorage.getItem('v_auth');
+            
+            if(isDir) {
+                // Delete all contents of folder first
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { headers: {'Authorization': `token ${tk}`} });
+                const files = await res.json();
+                for(let file of files) {
+                    await fetch(`https://api.github.com/repos/${REPO}/contents/${file.path}`, {
+                        method: 'DELETE', headers: {'Authorization': `token ${tk}`},
+                        body: JSON.stringify({message: "dir-purge", sha: file.sha})
+                    });
+                }
+            } else {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, {
+                    method: 'DELETE', headers: {'Authorization': `token ${tk}`},
+                    body: JSON.stringify({message:"del", sha:s})
+                });
+            }
+            fetchFiles();
+        }
+
+        // Rest of viewing/editing logic remains the same
+        function openMedia(url, name) {
+            const ext = name.split('.').pop().toLowerCase();
+            const view = document.getElementById('view-content');
+            const box = document.getElementById('viewer');
+            document.getElementById('save-btn').style.display = "none";
+            box.style.display = "block";
+            if (['jpg','jpeg','png','gif','webp'].includes(ext)) { view.innerHTML = `<img src="${url}">`; }
+            else if (['mp4','webm'].includes(ext)) { view.innerHTML = `<video controls autoplay><source src="${url}"></video>`; }
+            else { window.open(url); box.style.display = "none"; }
+        }
+
+        async function editText(path, sha) {
+            const tk = localStorage.getItem('v_auth');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: {'Authorization': `token ${tk}`} });
+            const data = await res.json();
+            currentFile = { path, sha };
+            document.getElementById('view-content').innerHTML = `<textarea id="editor">${atob(data.content)}</textarea>`;
+            document.getElementById('viewer').style.display = 'block';
+            document.getElementById('save-btn').style.display = 'inline-block';
+        }
+
+        async function saveText() {
+            const tk = localStorage.getItem('v_auth');
+            const content = btoa(document.getElementById('editor').value);
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile.path}`, {
+                method: 'PUT', headers: {'Authorization': `token ${tk}`},
+                body: JSON.stringify({ message: "edit", content, sha: currentFile.sha })
+            });
+            closeViewer(); fetchFiles();
+        }
+
+        function closeViewer() { document.getElementById('viewer').style.display = "none"; document.getElementById('view-content').innerHTML = ""; }
+        function updateProgress(amt) {
+            document.getElementById('p-bar').style.width = amt+"%";
+            document.getElementById('up-pct').innerText = Math.floor(amt)+"%";
+            const elapsed = (Date.now() - startTime)/1000;
+            const rem = (elapsed/amt) * (100-amt);
+            document.getElementById('up-eta').innerText = `ETA: ${Math.floor(rem)}S`;
+        }
+    </script>
+</body>
+</html>
