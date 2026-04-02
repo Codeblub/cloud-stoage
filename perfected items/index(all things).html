@@ -13,13 +13,13 @@
         #main-ui { display: none; padding: 20px; }
         .box { border: 1px solid var(--neon); padding: 15px; margin-bottom: 20px; background: rgba(0,20,0,0.2); }
         #viewer { display: none; border: 2px solid var(--neon); padding: 15px; background: #050505; margin-bottom: 20px; text-align: center; }
-        #viewer img, #viewer video { max-width: 100%; border: 1px solid var(--neon); }
+        #viewer img, #viewer video { max-width: 100%; border: 1px solid var(--neon); margin-top: 10px; }
         textarea { width: 100%; height: 400px; background: #000; color: var(--neon); border: 1px solid var(--neon); font-family: inherit; padding: 10px; }
-        button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; transition: 0.2s; }
+        button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; }
         button:hover { background: #fff; box-shadow: 0 0 10px var(--neon); }
         input { background: #000; border: 1px solid var(--neon); color: var(--neon); padding: 8px; }
         .file-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--dim); align-items: center; }
-        .folder-icon { color: yellow; font-weight: bold; margin-right: 10px; }
+        .folder-icon { color: #f0db4f; font-weight: bold; margin-right: 8px; }
     </style>
 </head>
 <body>
@@ -36,14 +36,14 @@
         <div class="box">
             <h2>1PB VAULT OS</h2>
             <button onclick="logout()">TERMINATE SESSION</button>
-            <button onclick="createNewFolder()" style="background: yellow;">+ NEW FOLDER</button>
+            <button onclick="createNewFolder()" style="background:#f0db4f">+ NEW FOLDER</button>
         </div>
 
         <div id="viewer" class="box">
             <h3 id="view-title">MEDIA_VIEWER</h3>
             <div id="view-content" style="margin-bottom:15px;"></div>
             <button onclick="closeViewer()">CLOSE</button>
-            <button id="save-btn" style="display:none;" onclick="saveText()">OVERWRITE_FILE</button>
+            <button id="save-btn" style="display:none;" onclick="saveText()">OVERWRITE</button>
         </div>
 
         <div class="box">
@@ -59,7 +59,7 @@
         </div>
 
         <div class="box">
-            <h3>MANIFEST <span id="current-path" style="font-size:0.7em; color:var(--dim);">/vault</span></h3>
+            <h3>MANIFEST <span id="current-path" style="font-size:0.7em; opacity:0.6;">/VAULT</span></h3>
             <button onclick="goBack()">.. BACK</button>
             <button onclick="fetchFiles()">REFRESH</button>
             <div id="file-list"></div>
@@ -79,64 +79,123 @@
         async function fetchFiles() {
             const tk = localStorage.getItem('v_auth');
             const list = document.getElementById('file-list');
-            document.getElementById('current-path').innerText = `/${currentDir}`;
+            document.getElementById('current-path').innerText = `/${currentDir.toUpperCase()}`;
             list.innerHTML = "SYNCING...";
             
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, { headers: {'Authorization': `token ${tk}`} });
-            const data = await res.json();
-            list.innerHTML = "";
-            
-            data.forEach(f => {
-                const isDir = f.type === "dir";
-                const div = document.createElement('div');
-                div.className = 'file-row';
-                div.innerHTML = `
-                    <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
-                    <div>
-                        ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="openMedia('${f.download_url}', '${f.name}')">GET</button>`}
-                        ${!isDir && f.name.match(/\.(txt|yaml|json|ps1|bat)$/) ? `<button onclick="editText('${f.path}','${f.sha}')">EDIT</button>` : ''}
-                        <button onclick="renameItem('${f.path}', '${f.name}', ${isDir})">NAME</button>
-                        <button style="background:red" onclick="deleteItem('${f.path}','${f.sha}', ${isDir})">X</button>
-                    </div>`;
-                list.appendChild(div);
-            });
+            try {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, { 
+                    headers: {'Authorization': `token ${tk}`, 'X-GitHub-Api-Version': '2022-11-28'} 
+                });
+                const data = await res.json();
+                list.innerHTML = "";
+                data.sort((a, b) => (b.type === 'dir') - (a.type === 'dir'));
+
+                data.forEach(f => {
+                    if (f.name === ".keep") return;
+                    const isDir = f.type === "dir";
+                    const div = document.createElement('div');
+                    div.className = 'file-row';
+                    div.innerHTML = `<span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
+                        <div>
+                            ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="openMedia('${f.download_url}', '${f.name}')">GET</button>`}
+                            ${!isDir && f.name.match(/\.(txt|yaml|json|ps1|bat|html)$/i) ? `<button onclick="editText('${f.path}','${f.sha}')">EDIT</button>` : ''}
+                            <button onclick="renameItem('${f.path}', '${f.name}', ${isDir})">NAME</button>
+                            <button style="background:red" onclick="deleteItem('${f.path}','${f.sha}', ${isDir})">X</button>
+                        </div>`;
+                    list.appendChild(div);
+                });
+            } catch(e) { list.innerHTML = "ACCESS ERROR"; }
         }
 
-        function enterDir(path) { currentDir = path; fetchFiles(); }
-        function goBack() { if(currentDir === "vault") return; let parts = currentDir.split('/'); parts.pop(); currentDir = parts.join('/'); fetchFiles(); }
+        function enterDir(p) { currentDir = p; fetchFiles(); }
+        function goBack() { if(currentDir === "vault") return; let p = currentDir.split('/'); p.pop(); currentDir = p.join('/'); fetchFiles(); }
 
         async function createNewFolder() {
-            const name = prompt("Enter Folder Name:");
+            const name = prompt("FOLDER NAME:");
             if(!name) return;
             const tk = localStorage.getItem('v_auth');
-            // GitHub doesn't have empty folders, so we create a .keep file
             await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${name}/.keep`, {
                 method: 'PUT', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: `Create folder ${name}`, content: btoa(" ") })
+                body: JSON.stringify({ message: "new folder", content: btoa(" ") })
             });
             fetchFiles();
         }
 
         async function renameItem(path, oldName, isDir) {
-            const newName = prompt("Rename to:", oldName);
+            const newName = prompt("NEW NAME (Include extension like .png):", oldName);
             if(!newName || newName === oldName) return;
             const tk = localStorage.getItem('v_auth');
-
-            // GitHub "Rename" = Copy to new path + Delete old path
-            alert("PROCESSING RE-INDEXING...");
+            
+            // Get original file data
             const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: {'Authorization': `token ${tk}`} });
             const data = await res.json();
             
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${newName}`, {
+            // 1. Create new file with original content
+            const createRes = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${newName}`, {
                 method: 'PUT', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: "rename", content: data.content, sha: null })
+                body: JSON.stringify({ message: `Rename to ${newName}`, content: data.content })
             });
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-                method: 'DELETE', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: "rename-cleanup", sha: data.sha })
-            });
-            fetchFiles();
+
+            if(createRes.ok) {
+                // 2. Delete old file
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+                    method: 'DELETE', headers: {'Authorization': `token ${tk}`},
+                    body: JSON.stringify({ message: "cleanup", sha: data.sha })
+                });
+                fetchFiles();
+            }
         }
+
+        function openMedia(url, name) {
+            const ext = name.split('.').pop().toLowerCase();
+            const view = document.getElementById('view-content');
+            const title = document.getElementById('view-title');
+            
+            // IMAGE TYPES
+            if (['jpg','jpeg','png','gif','webp','bmp'].includes(ext)) {
+                document.getElementById('viewer').style.display = "block";
+                title.innerText = `VIEWING: ${name}`;
+                view.innerHTML = `<img src="${url}">`;
+            } 
+            // VIDEO TYPES
+            else if (['mp4','webm','mov'].includes(ext)) {
+                document.getElementById('viewer').style.display = "block";
+                title.innerText = `VIEWING: ${name}`;
+                view.innerHTML = `<video controls autoplay><source src="${url}"></video>`;
+            } 
+            // DOWNLOAD FALLBACK (Preserves original name/extension)
+            else {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = name; 
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        }
+
+        async function editText(path, sha) {
+            const tk = localStorage.getItem('v_auth');
+            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: {'Authorization': `token ${tk}`} });
+            const data = await res.json();
+            currentFile = { path, sha };
+            document.getElementById('view-content').innerHTML = `<textarea id="editor">${atob(data.content)}</textarea>`;
+            document.getElementById('viewer').style.display = 'block';
+            document.getElementById('save-btn').style.display = 'inline-block';
+            document.getElementById('view-title').innerText = `EDITING: ${path.split('/').pop()}`;
+        }
+
+        async function saveText() {
+            const tk = localStorage.getItem('v_auth');
+            const content = btoa(document.getElementById('editor').value);
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile.path}`, {
+                method: 'PUT', headers: {'Authorization': `token ${tk}`, 'X-GitHub-Api-Version': '2022-11-28'},
+                body: JSON.stringify({ message: "edit file", content, sha: currentFile.sha })
+            });
+            closeViewer(); fetchFiles();
+        }
+
+        function closeViewer() { document.getElementById('viewer').style.display = "none"; document.getElementById('view-content').innerHTML = ""; }
 
         async function upload() {
             const tk = localStorage.getItem('v_auth');
@@ -150,75 +209,32 @@
                 const content = reader.result.split(',')[1];
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${file.name}`, {
                     method: 'PUT', headers: {'Authorization': `token ${tk}`},
-                    body: JSON.stringify({ message: "uplink", content })
+                    body: JSON.stringify({ message: `Uplink: ${file.name}`, content })
                 });
                 if(res.ok) { document.getElementById('p-bar').style.width="100%"; fetchFiles(); }
             };
             let p = 0; const t = setInterval(() => { p+=2; if(p>98) clearInterval(t); updateProgress(p); }, 150);
         }
 
-        async function deleteItem(p, s, isDir) {
-            if(!confirm(`PERMANENTLY DELETE ${isDir ? 'FOLDER AND CONTENTS' : 'FILE'}?`)) return;
-            const tk = localStorage.getItem('v_auth');
-            
-            if(isDir) {
-                // Delete all contents of folder first
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { headers: {'Authorization': `token ${tk}`} });
-                const files = await res.json();
-                for(let file of files) {
-                    await fetch(`https://api.github.com/repos/${REPO}/contents/${file.path}`, {
-                        method: 'DELETE', headers: {'Authorization': `token ${tk}`},
-                        body: JSON.stringify({message: "dir-purge", sha: file.sha})
-                    });
-                }
-            } else {
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, {
-                    method: 'DELETE', headers: {'Authorization': `token ${tk}`},
-                    body: JSON.stringify({message:"del", sha:s})
-                });
-            }
-            fetchFiles();
-        }
-
-        // Rest of viewing/editing logic remains the same
-        function openMedia(url, name) {
-            const ext = name.split('.').pop().toLowerCase();
-            const view = document.getElementById('view-content');
-            const box = document.getElementById('viewer');
-            document.getElementById('save-btn').style.display = "none";
-            box.style.display = "block";
-            if (['jpg','jpeg','png','gif','webp'].includes(ext)) { view.innerHTML = `<img src="${url}">`; }
-            else if (['mp4','webm'].includes(ext)) { view.innerHTML = `<video controls autoplay><source src="${url}"></video>`; }
-            else { window.open(url); box.style.display = "none"; }
-        }
-
-        async function editText(path, sha) {
-            const tk = localStorage.getItem('v_auth');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { headers: {'Authorization': `token ${tk}`} });
-            const data = await res.json();
-            currentFile = { path, sha };
-            document.getElementById('view-content').innerHTML = `<textarea id="editor">${atob(data.content)}</textarea>`;
-            document.getElementById('viewer').style.display = 'block';
-            document.getElementById('save-btn').style.display = 'inline-block';
-        }
-
-        async function saveText() {
-            const tk = localStorage.getItem('v_auth');
-            const content = btoa(document.getElementById('editor').value);
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentFile.path}`, {
-                method: 'PUT', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: "edit", content, sha: currentFile.sha })
-            });
-            closeViewer(); fetchFiles();
-        }
-
-        function closeViewer() { document.getElementById('viewer').style.display = "none"; document.getElementById('view-content').innerHTML = ""; }
         function updateProgress(amt) {
             document.getElementById('p-bar').style.width = amt+"%";
             document.getElementById('up-pct').innerText = Math.floor(amt)+"%";
             const elapsed = (Date.now() - startTime)/1000;
             const rem = (elapsed/amt) * (100-amt);
-            document.getElementById('up-eta').innerText = `ETA: ${Math.floor(rem)}S`;
+            document.getElementById('up-eta').innerText = `ETA: ${Math.max(0, Math.floor(rem))}S`;
+        }
+
+        async function deleteItem(p, s, isDir) {
+            if(!confirm("ERASE?")) return;
+            const tk = localStorage.getItem('v_auth');
+            if(isDir) {
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { headers: {'Authorization': `token ${tk}`} });
+                const files = await res.json();
+                for(let f of files) await fetch(`https://api.github.com/repos/${REPO}/contents/${f.path}`, { method: 'DELETE', headers: {'Authorization': `token ${tk}`}, body: JSON.stringify({message: "purge", sha: f.sha}) });
+            } else {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: 'DELETE', headers: {'Authorization': `token ${tk}`}, body: JSON.stringify({message:"del", sha:s}) });
+            }
+            fetchFiles();
         }
     </script>
 </body>
