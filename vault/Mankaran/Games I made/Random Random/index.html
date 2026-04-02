@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Triple Random: Animated Limbs!</title>
+    <style>
+        body { text-align: center; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #87CEEB; border: 4px solid #fff; display: block; margin: 10px auto; touch-action: none; }
+        .ui { font-size: 24px; margin-top: 10px; text-transform: uppercase; }
+        .instr { color: #aaa; font-size: 14px; margin-top: 5px; }
+        #modifierDisplay { color: #ffeb3b; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <span id="p1Score">0</span> | 
+        <b id="modeDisplay">BASKET</b> (<span id="modifierDisplay">NORMAL</span>) | 
+        <span id="p2Score">0</span>
+    </div>
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div class="instr">
+        <b>P1:</b> W (Jump), Double-Tap W (Shoot), A/D (Move) &nbsp;&nbsp;|&nbsp;&nbsp; <b>P2:</b> Up (Jump), Double-Tap Up (Shoot), Left/Right (Move)
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const modes = ['BASKETBALL', 'SOCCER', 'BOXING'];
+const modifiers = ['NORMAL', 'DOUBLE POINT', 'SNOW', 'BUSINESS', 'LONG ARM', 'SHORT ARM', 'SLOW BALL', 'FAST BALL'];
+
+let state = {
+    mode: 'BASKETBALL',
+    modifier: 'NORMAL',
+    p1: { x: 150, y: 390, dx: 0, dy: 0, score: 0, baseColor: '#ff4444', lastTap: 0 },
+    p2: { x: 650, y: 390, dx: 0, dy: 0, score: 0, baseColor: '#4444ff', lastTap: 0 },
+    ball: { x: 400, y: 200, dx: 0, dy: 0, radius: 15, heldBy: null, stealCooldown: 0 },
+    gravity: 0.6,
+    gameOver: false
+};
+
+const keys = {};
+
+window.onkeydown = (e) => {
+    let now = Date.now();
+
+    // Player 1 Input
+    if (e.code === 'KeyW' && !keys['KeyW']) {
+        if (now - state.p1.lastTap < 400) shoot(state.p1); 
+        if (state.p1.y >= 390) jump(state.p1);
+        state.p1.lastTap = now;
+    }
+
+    // Player 2 Input
+    if (e.code === 'ArrowUp' && !keys['ArrowUp']) {
+        if (now - state.p2.lastTap < 400) shoot(state.p2); 
+        if (state.p2.y >= 390) jump(state.p2);
+        state.p2.lastTap = now;
+    }
+
+    keys[e.code] = true;
+};
+window.onkeyup = (e) => keys[e.code] = false;
+
+function jump(player) {
+    player.dy = -12;
+    if (state.modifier === 'SNOW') player.dx += (Math.random() - 0.5) * 4;
+}
+
+function shoot(player) {
+    if (state.mode === 'BASKETBALL' && state.ball.heldBy === player) {
+        state.ball.heldBy = null;
+        
+        let shootDy = -14;
+        let shootDx = (player === state.p1) ? 10 : -10;
+        
+        if (state.modifier === 'SLOW BALL') {
+            shootDy = -10;
+            shootDx = (player === state.p1) ? 6 : -6;
+        } else if (state.modifier === 'FAST BALL') {
+            shootDy = -18;
+            shootDx = (player === state.p1) ? 16 : -16;
+        }
+
+        state.ball.dy = shootDy; 
+        state.ball.dx = shootDx; 
+        state.ball.stealCooldown = 15; 
+    }
+}
+
+function resetRound() {
+    state.mode = modes[Math.floor(Math.random() * modes.length)];
+    state.modifier = modifiers[Math.floor(Math.random() * modifiers.length)];
+    
+    document.getElementById('modeDisplay').innerText = state.mode;
+    document.getElementById('modifierDisplay').innerText = state.modifier;
+    
+    state.ball.heldBy = null; 
+    state.ball.stealCooldown = 0;
+    
+    [state.p1, state.p2].forEach(p => { p.y = 390; p.dx = 0; p.lastTap = 0; });
+    state.p1.x = 150; state.p2.x = 650;
+    
+    state.ball.x = 400; state.ball.y = 150;
+    
+    let dropSpeed = 10;
+    if (state.modifier === 'SLOW BALL') dropSpeed = 5;
+    if (state.modifier === 'FAST BALL') dropSpeed = 16;
+    state.ball.dx = (Math.random() - 0.5) * dropSpeed;
+    state.ball.dy = 0;
+}
+
+function update() {
+    if (state.gameOver) return;
+
+    // --- HORIZONTAL MOVEMENT ---
+    const moveSpeed = 1.2;
+    if (keys['KeyA']) state.p1.dx -= moveSpeed;
+    if (keys['KeyD']) state.p1.dx += moveSpeed;
+    if (keys['ArrowLeft']) state.p2.dx -= moveSpeed;
+    if (keys['ArrowRight']) state.p2.dx += moveSpeed;
+
+    let currentGravity = state.gravity;
+    if (state.modifier === 'SLOW BALL') currentGravity = state.gravity * 0.5;
+    if (state.modifier === 'FAST BALL') currentGravity = state.gravity * 1.3;
+
+    if (state.ball.stealCooldown > 0) state.ball.stealCooldown--;
+
+    // --- PLAYER PHYSICS ---
+    [state.p1, state.p2].forEach((p) => {
+        if (p.dx > 7) p.dx = 7;
+        if (p.dx < -7) p.dx = -7;
+
+        p.y += p.dy;
+        p.x += p.dx;
+        
+        let friction = state.modifier === 'SNOW' ? 0.98 : 0.85; 
+        
+        if (p.y < 390) {
+            p.dy += state.gravity; 
+            p.dx *= 0.95; 
+        } else { 
+            p.y = 390; 
+            p.dy = 0; 
+            p.dx *= friction; 
+        }
+        
+        if (p.x < 20) p.x = 20;
+        if (p.x > 780) p.x = 780;
+    });
+
+    let reach = 40;
+    if (state.modifier === 'LONG ARM') reach = 85;
+    if (state.modifier === 'SHORT ARM') reach = 20;
+
+    // --- BALL PHYSICS ---
+    if (state.mode !== 'BOXING') {
+        if (state.ball.heldBy) {
+            state.ball.x = state.ball.heldBy.x;
+            state.ball.y = state.ball.heldBy.y - 95; 
+            state.ball.dx = 0;
+            state.ball.dy = 0;
+        } else {
+            state.ball.x += state.ball.dx;
+            state.ball.y += state.ball.dy;
+            state.ball.dy += currentGravity;
+
+            if (state.ball.x < 0 || state.ball.x > 800) state.ball.dx *= -1;
+            
+            if (state.ball.y > 380) { 
+                state.ball.y = 380; 
+                state.ball.dy *= -0.4; 
+            }
+        }
+
+        // --- PLAYER / BALL INTERACTION ---
+        [state.p1, state.p2].forEach(p => {
+            let dist = Math.hypot(p.x - state.ball.x, (p.y - 30) - state.ball.y);
+            let opponent = (p === state.p1) ? state.p2 : state.p1;
+
+            if (dist < reach) {
+                if (state.mode === 'BASKETBALL') {
+                    if (!state.ball.heldBy && state.ball.stealCooldown === 0) {
+                        state.ball.heldBy = p;
+                        state.ball.stealCooldown = 30; 
+                    } 
+                    else if (state.ball.heldBy === opponent && state.ball.stealCooldown === 0) {
+                        state.ball.heldBy = p;
+                        state.ball.stealCooldown = 60; 
+                    }
+                } else if (state.mode === 'SOCCER') {
+                    let kickPower = 0.5;
+                    let kickLift = -8;
+                    
+                    if (state.modifier === 'SLOW BALL') {
+                        kickPower = 0.25; 
+                        kickLift = -5;    
+                    } else if (state.modifier === 'FAST BALL') {
+                        kickPower = 0.8;
+                        kickLift = -12;
+                    }
+
+                    state.ball.dx = (state.ball.x - p.x) * kickPower;
+                    state.ball.dy = kickLift;
+                }
+            }
+        });
+    }
+
+    // --- SCORING LOGIC ---
+    if (state.mode === 'BASKETBALL') {
+        if (state.ball.y < 150 && !state.ball.heldBy) {
+            if (state.ball.x > 750) score(1);
+            if (state.ball.x < 50) score(2);
+        }
+    } else if (state.mode === 'SOCCER') {
+        if (state.ball.x > 760 && state.ball.y > 250) score(1);
+        if (state.ball.x < 40 && state.ball.y > 250) score(2);
+    } else if (state.mode === 'BOXING') {
+        let boxReach = state.modifier === 'LONG ARM' ? 90 : (state.modifier === 'SHORT ARM' ? 40 : 60);
+        if (Math.hypot(state.p1.x - state.p2.x, state.p1.y - state.p2.y) < boxReach) {
+            if (state.p1.y < state.p2.y - 15) score(1);
+            if (state.p2.y < state.p1.y - 15) score(2);
+        }
+    }
+
+    draw();
+    requestAnimationFrame(update);
+}
+
+function score(playerNum) {
+    let points = state.modifier === 'DOUBLE POINT' ? 2 : 1;
+    if (playerNum === 1) state.p1.score += points;
+    else state.p2.score += points;
+
+    document.getElementById('p1Score').innerText = state.p1.score;
+    document.getElementById('p2Score').innerText = state.p2.score;
+
+    if (state.p1.score >= 15 || state.p2.score >= 15) {
+        state.gameOver = true;
+        let winner = state.p1.score >= 15 ? 1 : 2;
+        setTimeout(() => {
+            alert("Player " + winner + " Wins the Chaos Trophy!");
+            location.reload();
+        }, 100);
+    } else {
+        resetRound();
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, 800, 400);
+
+    ctx.fillStyle = (state.mode === 'SOCCER') ? '#2e7d32' : (state.mode === 'BOXING' ? '#555' : '#87CEEB');
+    if (state.modifier === 'SNOW') ctx.fillStyle = '#e0f7fa'; 
+    ctx.fillRect(0, 0, 800, 400);
+    
+    ctx.fillStyle = state.modifier === 'SNOW' ? '#ffffff' : '#dddddd';
+    ctx.fillRect(0, 390, 800, 10);
+
+    let netColor = state.modifier === 'SNOW' ? 'black' : 'white';
+    let netInnerColor = state.modifier === 'SNOW' ? 'rgba(0, 0, 0, 0.6)' : 'rgba(255, 255, 255, 0.6)';
+
+    if (state.mode === 'BASKETBALL') {
+        ctx.fillStyle = netColor;
+        ctx.fillRect(0, 150, 20, 5); ctx.fillRect(780, 150, 20, 5);
+    } else if (state.mode === 'SOCCER') {
+        ctx.strokeStyle = netColor;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(0, 250, 40, 140); 
+        ctx.strokeRect(760, 250, 40, 140);
+        
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = netInnerColor;
+        for(let i=10; i<40; i+=10) {
+            ctx.beginPath(); ctx.moveTo(i, 250); ctx.lineTo(i, 390); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(760+i, 250); ctx.lineTo(760+i, 390); ctx.stroke();
+        }
+        for(let i=260; i<390; i+=15) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(40, i); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(760, i); ctx.lineTo(800, i); ctx.stroke();
+        }
+    }
+
+    let time = Date.now() / 150;
+
+    // --- DRAW PLAYERS ---
+    [state.p1, state.p2].forEach(p => {
+        let isMoving = Math.abs(p.dx) > 0.5 && p.y >= 390;
+        let isJumping = p.y < 390;
+        let dir = p === state.p1 ? 1 : -1;
+
+        // Draw Legs
+        ctx.strokeStyle = '#222';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+
+        // Back Leg
+        ctx.beginPath(); ctx.moveTo(p.x - 7 * dir, p.y - 20);
+        if (isJumping) ctx.lineTo(p.x - 12 * dir, p.y - 5);
+        else if (isMoving) ctx.lineTo(p.x - 7 * dir + Math.sin(time) * 15 * dir, p.y);
+        else ctx.lineTo(p.x - 7 * dir, p.y);
+        ctx.stroke();
+
+        // Front Leg
+        ctx.beginPath(); ctx.moveTo(p.x + 7 * dir, p.y - 20);
+        if (isJumping) ctx.lineTo(p.x + 5 * dir, p.y - 10);
+        else if (isMoving) ctx.lineTo(p.x + 7 * dir + Math.sin(time + Math.PI) * 15 * dir, p.y);
+        else ctx.lineTo(p.x + 7 * dir, p.y);
+        ctx.stroke();
+
+        // Draw Body (Shorter now to make room for legs)
+        ctx.fillStyle = state.modifier === 'BUSINESS' ? '#111' : p.baseColor;
+        ctx.fillRect(p.x - 15, p.y - 60, 30, 40); 
+        
+        if (state.modifier === 'BUSINESS') {
+            ctx.fillStyle = p.baseColor; 
+            ctx.fillRect(p.x - 2, p.y - 60, 4, 20);
+        }
+
+        // Draw Head
+        ctx.fillStyle = '#ffdbac';
+        ctx.beginPath(); ctx.arc(p.x, p.y - 70, 15, 0, Math.PI * 2); ctx.fill();
+        
+        // Draw Arms
+        let armLen = 20;
+        if (state.modifier === 'LONG ARM') armLen = 40;
+        if (state.modifier === 'SHORT ARM') armLen = 10;
+        
+        let armY = p.y - 50;
+        let handX, handY;
+
+        if (state.mode === 'BASKETBALL' && state.ball.heldBy === p) {
+            // Holding ball above head
+            handX = p.x; handY = p.y - 85; 
+        } else if (state.mode === 'BOXING') {
+            // Punch or Guard!
+            let opp = p === state.p1 ? state.p2 : state.p1;
+            let distToOpp = Math.abs(p.x - opp.x);
+            let boxReach = state.modifier === 'LONG ARM' ? 90 : (state.modifier === 'SHORT ARM' ? 40 : 60);
+            
+            if (distToOpp < boxReach + 20) { 
+                handX = p.x + (armLen + 10) * dir; // Punch!
+                handY = armY + (Math.random() * 10 - 5); 
+            } else { 
+                handX = p.x + 15 * dir; // Guard up
+                handY = armY - 10;
+            }
+        } else {
+            // Normal running/idle
+            if (isMoving) {
+                handX = p.x + Math.sin(time + Math.PI) * armLen * dir;
+                handY = armY + 10;
+            } else if (isJumping) {
+                handX = p.x + armLen * dir;
+                handY = armY - 15;
+            } else {
+                handX = p.x + 5 * dir;
+                handY = armY + armLen;
+            }
+        }
+
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(p.x, armY);
+        ctx.lineTo(handX, handY);
+        ctx.stroke();
+
+        // Draw Boxing Gloves
+        if (state.mode === 'BOXING') {
+            ctx.fillStyle = p.baseColor;
+            ctx.beginPath();
+            ctx.arc(handX, handY, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    if (state.mode !== 'BOXING') {
+        if (state.modifier === 'BUSINESS') {
+            ctx.fillStyle = '#4e342e';
+            ctx.fillRect(state.ball.x - 15, state.ball.y - 10, 30, 20);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(state.ball.x - 5, state.ball.y - 15, 10, 5); 
+        } else {
+            if (state.modifier === 'FAST BALL') ctx.fillStyle = '#ffeb3b'; 
+            else if (state.modifier === 'SLOW BALL') ctx.fillStyle = '#9c27b0'; 
+            else ctx.fillStyle = 'orange'; 
+
+            ctx.beginPath();
+            ctx.arc(state.ball.x, state.ball.y, state.ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            if (state.ball.stealCooldown > 0 && state.ball.heldBy) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+    }
+}
+
+resetRound();
+update();
+</script>
+</body>
+</html>
