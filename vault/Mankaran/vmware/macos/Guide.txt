@@ -1,15 +1,9 @@
-Guide to it
-
-https://www.youtube.com/watch?v=OsXYN74gTuk
-
-iso
-
-https://techrechard.com/download-macos-tahoe-iso-vmware-virtualbox/
-
-bootloader vmdk
-
-https://techrechard.com/download-macos-tahoe-opencore-boot-image-vmdk/
-
-vmware
-
-https://www.techspot.com/downloads/downloadnow/189/?evp=f14a48a23bc560f5fbe81b8d83387b41&file=11744
+VMware Workstation Pro 25H2
+- https://techrechard.com/download-vmware-workstation-pro-vmware-fusion/
+macOS Unlocker
+- https://techrechard.com/download-macos-unlocker-for-vmware-workstation-player/
+macOS Tahoe ISO
+- https://techrechard.com/download-macos-tahoe-iso-vmware-virtualbox/
+OpenCore Boot VMDK
+- https://techrechard.com/download-macos-tahoe-opencore-boot-image-vmdk/
+ 
