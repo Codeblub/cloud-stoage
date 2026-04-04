@@ -16,7 +16,8 @@
         .folder-icon { color: #f0db4f; font-weight: bold; margin-right: 8px; }
         button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; }
         button:hover { background: #fff; }
-        input { background: #000; color: var(--neon); border: 1px solid var(--neon); padding: 5px; }
+        .btn-danger { background: #ff0033; color: #fff; }
+        input { background: #000; color: var(--neon); border: 1px solid var(--neon); padding: 5px; margin: 5px; }
     </style>
 </head>
 <body>
@@ -35,6 +36,13 @@
         </div>
 
         <div class="box">
+            <h3>COMMAND CENTER</h3>
+            <button onclick="createNewFolder()">+ NEW FOLDER</button>
+            <input type="file" id="file-upload" style="display:none" onchange="uploadFile(this.files[0])">
+            <button onclick="document.getElementById('file-upload').click()">↑ UPLOAD FILE</button>
+        </div>
+
+        <div class="box">
             <h3>MANIFEST <span id="current-path">/VAULT</span></h3>
             <button onclick="goBack()">.. BACK</button>
             <button onclick="fetchFiles()">REFRESH</button>
@@ -45,6 +53,7 @@
     <script>
         const REPO = "Codeblub/cloud-stoage";
         let currentDir = "vault";
+        let allFilesRaw = []; // Store raw data for bulk actions
 
         function unlock() {
             const k = document.getElementById('pass-key').value;
@@ -58,10 +67,7 @@
             fetchFiles();
         }
 
-        function logout() {
-            localStorage.removeItem('v_auth');
-            location.reload();
-        }
+        function logout() { localStorage.removeItem('v_auth'); location.reload(); }
 
         async function fetchFiles() {
             const tk = localStorage.getItem('v_auth');
@@ -72,46 +78,88 @@
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, {
                     headers: {'Authorization': `token ${tk}`}
                 });
-                const data = await res.json();
+                allFilesRaw = await res.json();
                 list.innerHTML = "";
                 
                 const processedVirtuals = new Set();
 
-                data.forEach(f => {
+                allFilesRaw.forEach(f => {
                     if (f.name === ".keep") return;
 
-                    // --- GHOST PART GROUPING LOGIC ---
+                    // --- GHOST PART GROUPING ---
                     if (f.name.includes(".ghostpart")) {
                         const baseName = f.name.split('.ghostpart')[0];
                         if (processedVirtuals.has(baseName)) return; 
                         processedVirtuals.add(baseName);
 
-                        const div = document.createElement('div');
-                        div.className = 'file-row';
-                        div.innerHTML = `
-                            <span><span style="color:cyan">[VIRTUAL]</span> > ${baseName}</span>
-                            <div>
-                                <button onclick="alert('Use VaultFS.exe to reconstruct large files')">SYNC</button>
-                                <button style="background:red" onclick="alert('Delete via Engine')">X</button>
-                            </div>`;
-                        list.appendChild(div);
+                        renderRow(baseName, true, null, list);
                         return;
                     }
 
-                    // Standard File Rendering
-                    const isDir = f.type === "dir";
-                    const div = document.createElement('div');
-                    div.className = 'file-row';
-                    div.innerHTML = `
-                        <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
-                        <div>
-                            ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="window.open('${f.download_url}')">GET</button>`}
-                        </div>`;
-                    list.appendChild(div);
+                    renderRow(f.name, f.type === "dir", f, list);
                 });
-            } catch(e) {
-                list.innerHTML = "ACCESS DENIED";
+            } catch(e) { list.innerHTML = "ACCESS DENIED"; }
+        }
+
+        function renderRow(name, isVirtualOrDir, fileObj, container) {
+            const div = document.createElement('div');
+            div.className = 'file-row';
+            const isDir = fileObj && fileObj.type === "dir";
+            const isVirtual = !fileObj && isVirtualOrDir;
+
+            div.innerHTML = `
+                <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : isVirtual ? '<span style="color:cyan">[VIRTUAL]</span>' : '> '} ${name}</span>
+                <div>
+                    ${isDir ? `<button onclick="enterDir('${fileObj.path}')">OPEN</button>` : isVirtual ? `<button onclick="alert('Use VaultFS.exe to Sync')">SYNC</button>` : `<button onclick="window.open('${fileObj.download_url}')">GET</button>`}
+                    <button onclick="renameItem('${name}', '${fileObj ? fileObj.sha : ''}', ${isVirtual})">RENAME</button>
+                    <button class="btn-danger" onclick="deleteItem('${name}', '${fileObj ? fileObj.sha : ''}', ${isVirtual})">X</button>
+                </div>`;
+            container.appendChild(div);
+        }
+
+        // --- TOOLKIT LOGIC ---
+
+        async function deleteItem(name, sha, isVirtual) {
+            if(!confirm(`PERMANENTLY DELETE ${name}?`)) return;
+            const tk = localStorage.getItem('v_auth');
+
+            if(isVirtual) {
+                // Delete all parts
+                const parts = allFilesRaw.filter(f => f.name.startsWith(name + ".ghostpart"));
+                for(let p of parts) {
+                    await fetch(`https://api.github.com/repos/${REPO}/contents/${p.path}`, {
+                        method: 'DELETE',
+                        headers: {'Authorization': `token ${tk}`},
+                        body: JSON.stringify({ message: `Purge Part: ${p.name}`, sha: p.sha })
+                    });
+                }
+            } else {
+                await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${name}`, {
+                    method: 'DELETE',
+                    headers: {'Authorization': `token ${tk}`},
+                    body: JSON.stringify({ message: `Delete: ${name}`, sha: sha })
+                });
             }
+            fetchFiles();
+        }
+
+        async function createNewFolder() {
+            const n = prompt("FOLDER NAME:");
+            if(!n) return;
+            const tk = localStorage.getItem('v_auth');
+            await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${n}/.keep`, {
+                method: 'PUT',
+                headers: {'Authorization': `token ${tk}`},
+                body: JSON.stringify({ message: `Create Dir: ${n}`, content: btoa(" ") })
+            });
+            fetchFiles();
+        }
+
+        async function renameItem(oldName, sha, isVirtual) {
+            const n = prompt("NEW NAME:", oldName);
+            if(!n || n === oldName) return;
+            alert("Rename triggers a move operation. Large virtual files should be renamed via VaultFS.exe for safety.");
+            // Standard rename logic would go here, but for 1PB, Engine handles it better.
         }
 
         function enterDir(p) { currentDir = p; fetchFiles(); }
