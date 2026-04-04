@@ -170,6 +170,26 @@
         }
 
         if (localStorage.getItem('v_auth')) showUI();
+        async function uploadFile(file) {
+    if (!file) return;
+    const tk = localStorage.getItem('v_auth');
+    const reader = new FileReader();
+    
+    reader.onload = async () => {
+        const content = reader.result.split(',')[1]; // Get Base64
+        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${file.name}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${tk}` },
+            body: JSON.stringify({
+                message: `Web Upload: ${file.name}`,
+                content: content
+            })
+        });
+        if(res.ok) fetchFiles();
+        else alert("Upload Failed (Check 100MB Limit)");
+    };
+    reader.readAsDataURL(file);
+}
     </script>
 </body>
 </html>
