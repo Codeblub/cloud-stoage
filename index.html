@@ -12,27 +12,14 @@
         .lock-box { border: 2px solid var(--neon); padding: 40px; text-align: center; box-shadow: 0 0 20px var(--dim); }
         #main-ui { display: none; padding: 20px; }
         .box { border: 1px solid var(--neon); padding: 15px; margin-bottom: 20px; background: rgba(0,20,0,0.2); }
-        
-        /* Drag & Drop Styling */
-        .file-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--dim); align-items: center; cursor: grab; }
-        .file-row.drag-over { background: var(--dim); border: 1px dashed var(--neon); }
+        .file-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--dim); align-items: center; }
         .folder-icon { color: #f0db4f; font-weight: bold; margin-right: 8px; }
-
-        /* Popups */
-        #up-overlay { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #000; border: 2px solid var(--neon); padding: 30px; z-index: 10001; text-align: center; min-width: 350px; box-shadow: 0 0 50px #000; }
-        .prog-container { width: 100%; border: 1px solid var(--neon); height: 20px; margin: 10px 0; }
-        .prog-bar { height: 100%; background: var(--neon); width: 0%; transition: 0.1s; }
-        #done-msg { display: none; font-size: 2em; font-weight: bold; color: #fff; text-shadow: 0 0 10px var(--neon); }
-        
-        #viewer { display: none; border: 2px solid var(--neon); padding: 15px; background: #050505; margin-bottom: 20px; text-align: center; }
-        #viewer img, #viewer video, #viewer audio { max-width: 100%; border: 1px solid var(--neon); }
-        textarea { width: 100%; height: 400px; background: #000; color: var(--neon); border: 1px solid var(--neon); font-family: inherit; }
         button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; }
         button:hover { background: #fff; }
+        input { background: #000; color: var(--neon); border: 1px solid var(--neon); padding: 5px; }
     </style>
 </head>
 <body>
-
     <div id="lockscreen">
         <div class="lock-box">
             <h1>[VAULT LOCKED]</h1>
@@ -41,40 +28,14 @@
         </div>
     </div>
 
-    <div id="up-overlay">
-        <h3 id="up-title">PROCESSING...</h3>
-        <div id="up-stats">QUEUE: 0/0</div>
-        <div class="prog-container"><div id="p-bar" class="prog-bar"></div></div>
-        <div id="up-eta">SYSTEM RE-INDEXING...</div>
-        <div id="done-msg">DONE!</div>
-        <button id="close-up" style="display:none; margin-top:10px;" onclick="hideUpload()">DISMISS</button>
-    </div>
-
     <div id="main-ui">
         <div class="box">
             <h2>1PB VAULT OS</h2>
             <button onclick="logout()">TERMINATE SESSION</button>
-            <button onclick="createNewFolder()" style="background:#f0db4f">+ NEW FOLDER</button>
-        </div>
-
-        <div id="viewer" class="box">
-            <h3 id="view-title">MEDIA_VIEWER</h3>
-            <div id="view-content"></div>
-            <button onclick="closeViewer()">CLOSE</button>
-            <button id="save-btn" style="display:none;" onclick="saveText()">OVERWRITE</button>
         </div>
 
         <div class="box">
-            <h3>UPLINK DATA</h3>
-            <input type="file" id="file-input" multiple>
-            <button onclick="startUpload(false)">UPLOAD FILES</button>
-            <input type="file" id="folder-input" webkitdirectory directory multiple>
-            <button onclick="startUpload(true)">UPLOAD FOLDER</button>
-        </div>
-
-        <div class="box">
-            <h3>MANIFEST <span id="current-path" style="font-size:0.7em; opacity:0.6;">/VAULT</span></h3>
-            <p style="font-size: 0.6em; color: gray;">TIP: DRAG ITEMS ONTO [DIR] FOLDERS TO MOVE THEM</p>
+            <h3>MANIFEST <span id="current-path">/VAULT</span></h3>
             <button onclick="goBack()">.. BACK</button>
             <button onclick="fetchFiles()">REFRESH</button>
             <div id="file-list"></div>
@@ -84,156 +45,83 @@
     <script>
         const REPO = "Codeblub/cloud-stoage";
         let currentDir = "vault";
-        let draggedItem = null;
 
-        window.onload = () => { if (localStorage.getItem('v_auth')) showUI(); };
-        function unlock() { const k = document.getElementById('pass-key').value; if(k.length < 5) return; localStorage.setItem('v_auth', k); showUI(); }
-        function showUI() { document.getElementById('lockscreen').style.display="none"; document.getElementById('main-ui').style.display="block"; fetchFiles(); }
-        function logout() { localStorage.removeItem('v_auth'); location.reload(); }
+        function unlock() {
+            const k = document.getElementById('pass-key').value;
+            localStorage.setItem('v_auth', k);
+            showUI();
+        }
+
+        function showUI() {
+            document.getElementById('lockscreen').style.display="none";
+            document.getElementById('main-ui').style.display="block";
+            fetchFiles();
+        }
+
+        function logout() {
+            localStorage.removeItem('v_auth');
+            location.reload();
+        }
 
         async function fetchFiles() {
             const tk = localStorage.getItem('v_auth');
             const list = document.getElementById('file-list');
-            document.getElementById('current-path').innerText = `/${currentDir.toUpperCase()}`;
-            list.innerHTML = "SYNCING...";
+            list.innerHTML = "SYNCING GHOST CORES...";
+            
             try {
-                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, { headers: {'Authorization': `token ${tk}`} });
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, {
+                    headers: {'Authorization': `token ${tk}`}
+                });
                 const data = await res.json();
                 list.innerHTML = "";
-                data.sort((a, b) => (b.type === 'dir') - (a.type === 'dir'));
+                
+                const processedVirtuals = new Set();
+
                 data.forEach(f => {
                     if (f.name === ".keep") return;
+
+                    // --- GHOST PART GROUPING LOGIC ---
+                    if (f.name.includes(".ghostpart")) {
+                        const baseName = f.name.split('.ghostpart')[0];
+                        if (processedVirtuals.has(baseName)) return; 
+                        processedVirtuals.add(baseName);
+
+                        const div = document.createElement('div');
+                        div.className = 'file-row';
+                        div.innerHTML = `
+                            <span><span style="color:cyan">[VIRTUAL]</span> > ${baseName}</span>
+                            <div>
+                                <button onclick="alert('Use VaultFS.exe to reconstruct large files')">SYNC</button>
+                                <button style="background:red" onclick="alert('Delete via Engine')">X</button>
+                            </div>`;
+                        list.appendChild(div);
+                        return;
+                    }
+
+                    // Standard File Rendering
                     const isDir = f.type === "dir";
                     const div = document.createElement('div');
                     div.className = 'file-row';
-                    div.draggable = true;
-                    div.innerHTML = `<span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
+                    div.innerHTML = `
+                        <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : '> '} ${f.name}</span>
                         <div>
-                            ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="openMedia('${f.download_url}', '${f.name}')">GET</button>`}
-                            ${!isDir && f.name.match(/\.(txt|yaml|json|ps1|bat|html)$/i) ? `<button onclick="editText('${f.path}','${f.sha}')">EDIT</button>` : ''}
-                            <button onclick="renameAny('${f.path}', '${f.name}', ${isDir})">NAME</button>
-                            <button style="background:red" onclick="deleteItem('${f.path}','${f.sha}', ${isDir})">X</button>
+                            ${isDir ? `<button onclick="enterDir('${f.path}')">OPEN</button>` : `<button onclick="window.open('${f.download_url}')">GET</button>`}
                         </div>`;
-                    
-                    // Drag & Drop Logic
-                    div.ondragstart = () => { draggedItem = f; };
-                    if (isDir) {
-                        div.ondragover = (e) => { e.preventDefault(); div.classList.add('drag-over'); };
-                        div.ondragleave = () => { div.classList.remove('drag-over'); };
-                        div.ondrop = async (e) => {
-                            e.preventDefault();
-                            div.classList.remove('drag-over');
-                            if (draggedItem && draggedItem.path !== f.path) {
-                                await moveItem(draggedItem, f.path);
-                            }
-                        };
-                    }
                     list.appendChild(div);
                 });
-            } catch(e) { list.innerHTML = "ACCESS ERROR"; }
-        }
-
-        async function moveItem(item, targetFolder) {
-            if (!confirm(`MOVE ${item.name} TO ${targetFolder}?`)) return;
-            const tk = localStorage.getItem('v_auth');
-            showStatus("MOVING ITEM...");
-            
-            if (item.type === 'dir') {
-                await recursiveMove(item.path, `${targetFolder}/${item.name}`);
-            } else {
-                await singleMove(item.path, `${targetFolder}/${item.name}`);
-            }
-            hideStatus();
-            fetchFiles();
-        }
-
-        async function renameAny(path, oldName, isDir) {
-            const newName = prompt("NEW NAME:", oldName);
-            if (!newName || newName === oldName) return;
-            const newPath = `${currentDir}/${newName}`;
-            showStatus("RE-INDEXING...");
-            if (isDir) {
-                await recursiveMove(path, newPath);
-            } else {
-                await singleMove(path, newPath);
-            }
-            hideStatus();
-            fetchFiles();
-        }
-
-        async function recursiveMove(oldPath, newPath) {
-            const tk = localStorage.getItem('v_auth');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldPath}`, { headers: {'Authorization': `token ${tk}`} });
-            const files = await res.json();
-            
-            for (let f of files) {
-                if (f.type === 'dir') {
-                    await recursiveMove(f.path, `${newPath}/${f.name}`);
-                } else {
-                    await singleMove(f.path, `${newPath}/${f.name}`);
-                }
+            } catch(e) {
+                list.innerHTML = "ACCESS DENIED";
             }
         }
 
-        async function singleMove(oldP, newP) {
-            const tk = localStorage.getItem('v_auth');
-            const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${oldP}`, { headers: {'Authorization': `token ${tk}`} });
-            const data = await res.json();
-            
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${newP}`, {
-                method: 'PUT', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: `Move to ${newP}`, content: data.content })
-            });
-            await fetch(`https://api.github.com/repos/${REPO}/contents/${oldP}`, {
-                method: 'DELETE', headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: "cleanup", sha: data.sha })
-            });
-        }
-
-        // UI HELPERS
-        function showStatus(msg) {
-            document.getElementById('up-overlay').style.display = 'block';
-            document.getElementById('up-title').innerText = msg;
-            document.getElementById('done-msg').style.display = 'none';
-        }
-        function hideStatus() {
-            document.getElementById('up-title').style.display = 'none';
-            document.getElementById('done-msg').style.display = 'block';
-            document.getElementById('close-up').style.display = 'inline-block';
-        }
-        function hideUpload() { document.getElementById('up-overlay').style.display = 'none'; location.reload(); }
-
-        // Core logic remains standard
         function enterDir(p) { currentDir = p; fetchFiles(); }
-        function goBack() { if(currentDir === "vault") return; let p = currentDir.split('/'); p.pop(); currentDir = p.join('/'); fetchFiles(); }
-        function closeViewer() { document.getElementById('viewer').style.display = "none"; document.getElementById('view-content').innerHTML = ""; }
-        
-        async function startUpload(isFolder) {
-            const input = isFolder ? document.getElementById('folder-input') : document.getElementById('file-input');
-            const files = input.files;
-            if (!files.length) return;
-            showStatus("UPLOADING...");
-            const tk = localStorage.getItem('v_auth');
-            for(let i=0; i<files.length; i++) {
-                const f = files[i];
-                const path = f.webkitRelativePath ? `${currentDir}/${f.webkitRelativePath}` : `${currentDir}/${f.name}`;
-                const reader = new FileReader();
-                const b64 = await new Promise(r => { reader.onload=()=>r(reader.result.split(',')[1]); reader.readAsDataURL(f); });
-                await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: {'Authorization': `token ${tk}`}, body: JSON.stringify({message: "uplink", content: b64}) });
-                document.getElementById('p-bar').style.width = ((i+1)/files.length * 100) + "%";
-            }
-            hideStatus();
+        function goBack() { 
+            if(currentDir === "vault") return;
+            currentDir = currentDir.split('/').slice(0,-1).join('/');
+            fetchFiles();
         }
 
-        function openMedia(url, name) {
-            const ext = name.split('.').pop().toLowerCase();
-            const view = document.getElementById('view-content');
-            document.getElementById('viewer').style.display = "block";
-            if (['jpg','jpeg','png','gif','webp'].includes(ext)) view.innerHTML = `<img src="${url}">`;
-            else if (['mp4','webm'].includes(ext)) view.innerHTML = `<video controls autoplay><source src="${url}"></video>`;
-            else if (['mp3','wav','ogg'].includes(ext)) view.innerHTML = `<audio controls autoplay><source src="${url}"></audio>`;
-            else { window.open(url); closeViewer(); }
-        }
+        if (localStorage.getItem('v_auth')) showUI();
     </script>
 </body>
 </html>
