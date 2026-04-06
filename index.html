@@ -5,58 +5,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>1PB Vault Control</title>
     <style>
-        :root { --neon: #00ff41; --dim: #003b00; }
+        :root { --neon: #00ff41; --dim: #003b00; --hazard: #ff0033; }
         body { background: #000; color: var(--neon); font-family: 'Courier New', monospace; margin: 0; text-transform: uppercase; overflow-x: hidden; }
-        body::before { content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0; background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); z-index: 9999; pointer-events: none; background-size: 100% 2px, 3px 100%; }
+        
+        /* CRT Scanline Effect */
+        body::before { 
+            content: " "; display: block; position: fixed; top: 0; left: 0; bottom: 0; right: 0; 
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06)); 
+            z-index: 9999; pointer-events: none; background-size: 100% 2px, 3px 100%; 
+        }
+
         #lockscreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; display: flex; justify-content: center; align-items: center; }
-        .lock-box { border: 2px solid var(--neon); padding: 40px; text-align: center; box-shadow: 0 0 20px var(--dim); }
-        #main-ui { display: none; padding: 20px; }
-        .box { border: 1px solid var(--neon); padding: 15px; margin-bottom: 20px; background: rgba(0,20,0,0.2); }
-        .file-row { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid var(--dim); align-items: center; }
+        .lock-box { border: 2px solid var(--neon); padding: 40px; text-align: center; box-shadow: 0 0 20px var(--dim); background: #000; }
+        
+        #main-ui { display: none; padding: 20px; max-width: 1000px; margin: auto; }
+        .box { border: 1px solid var(--neon); padding: 15px; margin-bottom: 20px; background: rgba(0,20,0,0.1); box-shadow: inset 0 0 10px var(--dim); }
+        
+        .file-row { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--dim); align-items: center; transition: 0.2s; }
+        .file-row:hover { background: rgba(0,255,65,0.1); }
+        
         .folder-icon { color: #f0db4f; font-weight: bold; margin-right: 8px; }
-        button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; }
-        button:hover { background: #fff; }
-        .btn-danger { background: #ff0033; color: #fff; }
-        input { background: #000; color: var(--neon); border: 1px solid var(--neon); padding: 5px; margin: 5px; }
+        .virtual-tag { color: cyan; font-weight: bold; border: 1px solid cyan; padding: 2px 5px; font-size: 10px; margin-right: 8px; }
+        
+        button { background: var(--neon); color: #000; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; margin: 2px; font-family: 'Courier New'; }
+        button:hover { background: #fff; box-shadow: 0 0 10px #fff; }
+        .btn-danger { background: var(--hazard); color: #fff; }
+        .btn-danger:hover { background: #ff5555; }
+        
+        input { background: #000; color: var(--neon); border: 1px solid var(--neon); padding: 8px; margin: 5px; font-family: 'Courier New'; outline: none; }
+        #current-path { color: #fff; text-shadow: 0 0 5px var(--neon); }
+        
+        .loading { animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
     <div id="lockscreen">
         <div class="lock-box">
             <h1>[VAULT LOCKED]</h1>
+            <p>INPUT ENCRYPTION KEY (GITHUB TOKEN)</p>
             <input type="password" id="pass-key" placeholder="ACCESS TOKEN...">
-            <button onclick="unlock()">DECRYPT</button>
+            <br><br>
+            <button onclick="unlock()">INITIALIZE ACCESS</button>
         </div>
     </div>
 
     <div id="main-ui">
-        <div class="box">
-            <h2>1PB VAULT OS</h2>
-            <button onclick="logout()">TERMINATE SESSION</button>
+        <div class="box" style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin:0">1PB VAULT OS // ROOT_ACCESS</h2>
+            <button onclick="logout()" class="btn-danger">TERMINATE SESSION</button>
         </div>
 
         <div class="box">
             <h3>COMMAND CENTER</h3>
-            <button onclick="createNewFolder()">+ NEW FOLDER</button>
+            <button onclick="createNewFolder()">+ MKDIR (NEW FOLDER)</button>
             <input type="file" id="file-upload" style="display:none" onchange="uploadFile(this.files[0])">
-            <button onclick="document.getElementById('file-upload').click()">↑ UPLOAD FILE</button>
+            <button onclick="document.getElementById('file-upload').click()">↑ PUSH_FILE (UPLOAD)</button>
+            <button onclick="fetchFiles()">↻ REFRESH_MANIFEST</button>
         </div>
 
         <div class="box">
-            <h3>MANIFEST <span id="current-path">/VAULT</span></h3>
-            <button onclick="goBack()">.. BACK</button>
-            <button onclick="fetchFiles()">REFRESH</button>
-            <div id="file-list"></div>
+            <h3>DIRECTORY: <span id="current-path">/VAULT</span></h3>
+            <button id="back-btn" onclick="goBack()" style="display:none">.. CD_BACK</button>
+            <div id="file-list" style="margin-top: 15px;"></div>
         </div>
     </div>
 
     <script>
         const REPO = "Codeblub/cloud-stoage";
         let currentDir = "vault";
-        let allFilesRaw = []; // Store raw data for bulk actions
+        let allFilesRaw = [];
 
         function unlock() {
             const k = document.getElementById('pass-key').value;
+            if(!k) return alert("TOKEN REQUIRED");
             localStorage.setItem('v_auth', k);
             showUI();
         }
@@ -72,8 +95,11 @@
         async function fetchFiles() {
             const tk = localStorage.getItem('v_auth');
             const list = document.getElementById('file-list');
-            list.innerHTML = "SYNCING GHOST CORES...";
+            list.innerHTML = "<span class='loading'>SYNCHRONIZING GHOST CORES...</span>";
             
+            document.getElementById('current-path').innerText = "/" + currentDir;
+            document.getElementById('back-btn').style.display = (currentDir === "vault") ? "none" : "inline-block";
+
             try {
                 const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}`, {
                     headers: {'Authorization': `token ${tk}`}
@@ -86,19 +112,18 @@
                 allFilesRaw.forEach(f => {
                     if (f.name === ".keep") return;
 
-                    // --- GHOST PART GROUPING ---
+                    // Group .ghostpart files into one "Virtual" file
                     if (f.name.includes(".ghostpart")) {
                         const baseName = f.name.split('.ghostpart')[0];
                         if (processedVirtuals.has(baseName)) return; 
                         processedVirtuals.add(baseName);
-
                         renderRow(baseName, true, null, list);
                         return;
                     }
 
                     renderRow(f.name, f.type === "dir", f, list);
                 });
-            } catch(e) { list.innerHTML = "ACCESS DENIED"; }
+            } catch(e) { list.innerHTML = "ACCESS_DENIED: INVALID_TOKEN OR REPO_NOT_FOUND"; }
         }
 
         function renderRow(name, isVirtualOrDir, fileObj, container) {
@@ -108,88 +133,87 @@
             const isVirtual = !fileObj && isVirtualOrDir;
 
             div.innerHTML = `
-                <span>${isDir ? '<span class="folder-icon">[DIR]</span>' : isVirtual ? '<span style="color:cyan">[VIRTUAL]</span>' : '> '} ${name}</span>
+                <span>
+                    ${isDir ? '<span class="folder-icon">[DIR]</span>' : isVirtual ? '<span class="virtual-tag">VIRTUAL</span>' : '> '} 
+                    ${name}
+                </span>
                 <div>
-                    ${isDir ? `<button onclick="enterDir('${fileObj.path}')">OPEN</button>` : isVirtual ? `<button onclick="alert('Use VaultFS.exe to Sync')">SYNC</button>` : `<button onclick="window.open('${fileObj.download_url}')">GET</button>`}
-                    <button onclick="renameItem('${name}', '${fileObj ? fileObj.sha : ''}', ${isVirtual})">RENAME</button>
-                    <button class="btn-danger" onclick="deleteItem('${name}', '${fileObj ? fileObj.sha : ''}', ${isVirtual})">X</button>
+                    ${isDir ? `<button onclick="enterDir('${fileObj.path}')">CD_OPEN</button>` : isVirtual ? `<button onclick="alert('SYNC VIA VAULTFS.EXE')">GHOST_SYNC</button>` : `<button onclick="window.open('${fileObj.download_url}')">GET_RAW</button>`}
+                    <button class="btn-danger" onclick="deleteItem('${name}', '${fileObj ? fileObj.sha : ''}', ${isVirtual})">PURGE</button>
                 </div>`;
             container.appendChild(div);
         }
 
-        // --- TOOLKIT LOGIC ---
-
         async function deleteItem(name, sha, isVirtual) {
-            if(!confirm(`PERMANENTLY DELETE ${name}?`)) return;
+            if(!confirm(`CONFIRM DESTRUCTION OF ${name}?`)) return;
             const tk = localStorage.getItem('v_auth');
 
             if(isVirtual) {
-                // Delete all parts
+                // Find and delete every part associated with the virtual file
                 const parts = allFilesRaw.filter(f => f.name.startsWith(name + ".ghostpart"));
                 for(let p of parts) {
                     await fetch(`https://api.github.com/repos/${REPO}/contents/${p.path}`, {
                         method: 'DELETE',
                         headers: {'Authorization': `token ${tk}`},
-                        body: JSON.stringify({ message: `Purge Part: ${p.name}`, sha: p.sha })
+                        body: JSON.stringify({ message: `Purge Ghost Core: ${p.name}`, sha: p.sha })
                     });
                 }
             } else {
                 await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${name}`, {
                     method: 'DELETE',
                     headers: {'Authorization': `token ${tk}`},
-                    body: JSON.stringify({ message: `Delete: ${name}`, sha: sha })
+                    body: JSON.stringify({ message: `Delete Asset: ${name}`, sha: sha })
                 });
             }
             fetchFiles();
         }
 
         async function createNewFolder() {
-            const n = prompt("FOLDER NAME:");
+            const n = prompt("NEW DIRECTORY NAME:");
             if(!n) return;
             const tk = localStorage.getItem('v_auth');
+            // GitHub creates folders by creating a file inside them
             await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${n}/.keep`, {
                 method: 'PUT',
                 headers: {'Authorization': `token ${tk}`},
-                body: JSON.stringify({ message: `Create Dir: ${n}`, content: btoa(" ") })
+                body: JSON.stringify({ message: `MKDIR: ${n}`, content: btoa("GHOST_FOLDER_INIT") })
             });
             fetchFiles();
         }
 
-        async function renameItem(oldName, sha, isVirtual) {
-            const n = prompt("NEW NAME:", oldName);
-            if(!n || n === oldName) return;
-            alert("Rename triggers a move operation. Large virtual files should be renamed via VaultFS.exe for safety.");
-            // Standard rename logic would go here, but for 1PB, Engine handles it better.
+        async function uploadFile(file) {
+            if (!file) return;
+            const tk = localStorage.getItem('v_auth');
+            const reader = new FileReader();
+            
+            reader.onload = async () => {
+                const content = reader.result.split(',')[1]; 
+                const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${file.name}`, {
+                    method: 'PUT',
+                    headers: { 'Authorization': `token ${tk}` },
+                    body: JSON.stringify({
+                        message: `Manual Web Push: ${file.name}`,
+                        content: content
+                    })
+                });
+                if(res.ok) fetchFiles();
+                else alert("BUFFER_OVERFLOW: File exceeds GitHub 100MB Direct API limit.");
+            };
+            reader.readAsDataURL(file);
         }
 
         function enterDir(p) { currentDir = p; fetchFiles(); }
+        
         function goBack() { 
             if(currentDir === "vault") return;
-            currentDir = currentDir.split('/').slice(0,-1).join('/');
+            let parts = currentDir.split('/');
+            parts.pop();
+            currentDir = parts.join('/');
             fetchFiles();
         }
 
+        // Auto-initialize if token exists
         if (localStorage.getItem('v_auth')) showUI();
-        async function uploadFile(file) {
-    if (!file) return;
-    const tk = localStorage.getItem('v_auth');
-    const reader = new FileReader();
-    
-    reader.onload = async () => {
-        const content = reader.result.split(',')[1]; // Get Base64
-        const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${currentDir}/${file.name}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `token ${tk}` },
-            body: JSON.stringify({
-                message: `Web Upload: ${file.name}`,
-                content: content
-            })
-        });
-        if(res.ok) fetchFiles();
-        else alert("Upload Failed (Check 100MB Limit)");
-    };
-    reader.readAsDataURL(file);
-}
     </script>
 </body>
 </html>
