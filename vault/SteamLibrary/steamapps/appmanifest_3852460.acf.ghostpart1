@@ -1,0 +1,41 @@
+"AppState"
+{
+	"appid"		"3852460"
+	"universe"		"1"
+	"LauncherPath"		"C:\\Program Files (x86)\\Steam\\steam.exe"
+	"name"		"Drunk Driving Simulator"
+	"StateFlags"		"4"
+	"installdir"		"Drunk Driving Simulator"
+	"LastUpdated"		"1775495219"
+	"LastPlayed"		"1775495421"
+	"SizeOnDisk"		"1235716548"
+	"StagingSize"		"0"
+	"buildid"		"22043944"
+	"LastOwner"		"76561199572644252"
+	"DownloadType"		"1"
+	"UpdateResult"		"0"
+	"BytesToDownload"		"1011500016"
+	"BytesDownloaded"		"1011500016"
+	"BytesToStage"		"1235716548"
+	"BytesStaged"		"1235716548"
+	"TargetBuildID"		"22043944"
+	"AutoUpdateBehavior"		"0"
+	"AllowOtherDownloadsWhileRunning"		"0"
+	"ScheduledAutoUpdate"		"0"
+	"InstalledDepots"
+	{
+		"3852463"
+		{
+			"manifest"		"8823296531424906641"
+			"size"		"1235716548"
+		}
+	}
+	"UserConfig"
+	{
+		"language"		"english"
+	}
+	"MountedConfig"
+	{
+		"language"		"english"
+	}
+}
